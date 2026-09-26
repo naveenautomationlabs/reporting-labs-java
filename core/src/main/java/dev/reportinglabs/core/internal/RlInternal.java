@@ -67,6 +67,15 @@ public final class RlInternal {
     public static TestSlot current() { return CURRENT.get(); }
     public static Masker masker()    { return MASKER; }
 
+    /** True if any test in this run finished as failed. Used by the
+     *  auto-open logic to decide whether to open the report on `on-failure`. */
+    public static boolean hasFailures() {
+        for (TestSlot t : FINISHED.values()) {
+            if ("failed".equals(t.outcome)) return true;
+        }
+        return false;
+    }
+
     /** Add a tag to the current test (framework bindings use this for
      *  TestNG groups, JUnit tags, etc.). No-op outside a test. */
     public static void tag(String tag) {

@@ -99,8 +99,24 @@ public final class Config {
     // ---------- look & feel ----------
 
     public static String title()        { return get("title", "Test report"); }
-    public static String outputFolder() { return get("outputFolder", "reporting-labs"); }
+
+    /** Default is `target/reporting-labs` so the report lands under the
+     *  standard Maven build output folder and is wiped by `mvn clean`.
+     *  Set to `reporting-labs` (or any other path) to override. */
+    public static String outputFolder() {
+        String v = get("outputFolder", null);
+        if (v != null) return v;
+        // Fallback: if a `target/` dir exists in CWD, put the report there;
+        // otherwise fall back to `./reporting-labs` (matches the Node.js side).
+        return new File("target").isDirectory() ? "target/reporting-labs" : "reporting-labs";
+    }
+
     public static String outputFile()   { return get("outputFile", "index.html"); }
+
+    /** When to open the generated HTML in the default browser after the run.
+     *  `never` (default) | `always` | `on-failure`. Auto-skipped when running
+     *  headless or on CI regardless of the setting. */
+    public static String open()         { return get("open", "never"); }
     public static String theme()        { return get("theme", "auto"); }
     public static String palette()      { return get("palette", "lab"); }
     public static String accent()       { return get("accent", ""); }

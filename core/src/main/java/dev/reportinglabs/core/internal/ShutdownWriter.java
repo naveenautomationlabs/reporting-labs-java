@@ -42,11 +42,50 @@ public final class ShutdownWriter {
             }
             try {
                 String path = RlInternal.writeReport(Config.outputFolder());
-                System.err.println("[reporting-labs] wrote " + path);
+                // stdout so terminals don't paint the success line red.
+                System.out.println("[reporting-labs] wrote " + path);
+                maybeOpen(path);
             } catch (Throwable t) {
                 System.err.println("[reporting-labs] failed to write report: " + t.getMessage());
                 t.printStackTrace(System.err);
             }
         }, "reporting-labs-writer"));
+    }
+
+    /** Opens the report in the default browser when the user asked for it AND
+     *  we're not in a headless/CI environment. Any failure is swallowed —
+     *  writing the report is what matters. */
+    private static void maybeOpen(String path) {
+        String mode = String.valueOf(Config.open()).toLowerCase(java.util.Locale.ROOT);
+        if ("never".equals(mode) || mode.isEmpty()) return;
+
+        // 'on-failure' respects RlInternal.hasFailures(); 'always' unconditional.
+        if ("on-failure".equals(mode) && !RlInternal.hasFailures()) return;
+
+        if (isCi() || isHeadless()) return;
+
+        try {
+            java.awt.Desktop d = java.awt.Desktop.getDesktop();
+            if (d.isSupported(java.awt.Desktop.Action.BROWSE)) {
+                d.browse(new java.io.File(path).toURI());
+            }
+        } catch (Throwable ignore) { /* opening is best-effort */ }
+    }
+
+    private static boolean isCi() {
+        for (String k : new String[]{
+            "CI", "GITHUB_ACTIONS", "JENKINS_URL", "GITLAB_CI",
+            "CIRCLECI", "TRAVIS", "BITBUCKET_PIPELINE_UUID",
+            "BUILDKITE", "TEAMCITY_VERSION", "TF_BUILD",
+        }) {
+            String v = System.getenv(k);
+            if (v != null && !v.isEmpty() && !"false".equalsIgnoreCase(v)) return true;
+        }
+        return false;
+    }
+
+    private static boolean isHeadless() {
+        try { return java.awt.GraphicsEnvironment.isHeadless(); }
+        catch (Throwable t) { return true; }
     }
 }
