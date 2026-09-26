@@ -1,0 +1,15 @@
+target/
+*.class
+.mvn/
+!.mvn/wrapper/maven-wrapper.jar
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+build/
+.gradle/
+reporting-labs.history.json
+reporting-labs/
+*.log
