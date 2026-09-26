@@ -43,12 +43,16 @@
     <url>https://github.com/naveenautomationlabs/reporting-labs-java/issues</url>
   </issueManagement>
 
+  <!-- Only the four published library modules live in the top-level
+       reactor. The examples subtree is opt-in via the 'with-examples'
+       profile (default-on for `mvn test`, auto-off whenever any explicit
+       profile is passed, e.g. -Prelease). This keeps the examples out of
+       Central bundles entirely — they never even see the deploy phase. -->
   <modules>
     <module>core</module>
     <module>junit5</module>
     <module>testng</module>
     <module>playwright</module>
-    <module>examples</module>
   </modules>
 
   <properties>
@@ -151,6 +155,20 @@
   </build>
 
   <profiles>
+    <!-- Default-on profile that pulls in the examples subtree. Turns
+         itself off automatically the moment any explicit profile is
+         passed on the command line (Maven quirk of activeByDefault),
+         which is exactly what we want for `mvn -Prelease deploy`. -->
+    <profile>
+      <id>with-examples</id>
+      <activation>
+        <activeByDefault>true</activeByDefault>
+      </activation>
+      <modules>
+        <module>examples</module>
+      </modules>
+    </profile>
+
     <!-- Activate with `-P release` when publishing to Maven Central. -->
     <profile>
       <id>release</id>
