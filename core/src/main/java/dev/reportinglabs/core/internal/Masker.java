@@ -15,7 +15,7 @@ public final class Masker {
         "authorization", "auth", "cookie", "session", "csrf", "xsrf",
         "privatekey", "private_key", "clientsecret", "client_secret",
         "accesstoken", "access_token", "refreshtoken", "refresh_token",
-        "cardnumber", "card_number", "cvv", "cvc", "pan", "ssn",
+        "cardnumber", "card_number", "card", "cvv", "cvc", "pan", "ssn",
     };
 
     private final Set<String> keys = new HashSet<>();
