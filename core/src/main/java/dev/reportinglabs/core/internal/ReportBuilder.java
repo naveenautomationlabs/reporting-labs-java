@@ -167,7 +167,11 @@ public final class ReportBuilder {
                 } catch (Exception ignore) { /* corrupt or missing — start fresh */ }
             }
             Map<String, Object> row = new LinkedHashMap<>();
-            row.put("label",    (String) Config.metadata().getOrDefault("build", "run-" + now));
+            // Label is only used as the trend chart's x-axis tick. Leave it
+            // empty when no build id is configured — the template's JS then
+            // formats a short 'Sep 26' date instead of a millisecond epoch.
+            String build = Config.metadata().get("build");
+            row.put("label",    build == null ? "" : build);
             row.put("time",     now);
             row.put("duration", Math.max(0, now - start));
             row.put("total",   ((Number) stats.get("total")).intValue());

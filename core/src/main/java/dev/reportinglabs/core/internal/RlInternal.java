@@ -45,9 +45,9 @@ public final class RlInternal {
         String errorMessage;
         String errorStack;
 
-        TestSlot(String id, String title, String file, int line, String projectName, List<String> path) {
+        TestSlot(String id, String key, String title, String file, int line, String projectName, List<String> path) {
             this.id = id;
-            this.key = id;
+            this.key = key;
             this.title = title;
             this.file = file;
             this.line = line;
@@ -60,6 +60,7 @@ public final class RlInternal {
     private static final ThreadLocal<TestSlot> CURRENT = new ThreadLocal<>();
     private static final Map<String, TestSlot> FINISHED = new ConcurrentHashMap<>();
     private static final AtomicInteger IDX = new AtomicInteger();
+    private static final java.util.concurrent.atomic.AtomicLong SEQ = new java.util.concurrent.atomic.AtomicLong();
     private static final long SUITE_START = System.currentTimeMillis();
     private static final Masker MASKER = new Masker();
 
@@ -73,10 +74,14 @@ public final class RlInternal {
         if (s != null && tag != null && !tag.isEmpty()) s.tags.add(tag);
     }
 
-    /** Called by a framework listener when a test starts. */
+    /** Called by a framework listener when a test starts. Every invocation
+     *  gets a unique id so that data-driven tests, retries and re-runs of
+     *  the same method don't collapse into one row. `key` stays stable
+     *  across invocations so the history matcher can still line up runs. */
     public static TestSlot begin(String title, String file, int line, String projectName, List<String> path) {
-        String id = idOf(projectName, file, line, title);
-        TestSlot slot = new TestSlot(id, title, file, line, projectName, path);
+        String key = idOf(projectName, file, line, title);
+        String id  = key + "#" + SEQ.incrementAndGet();
+        TestSlot slot = new TestSlot(id, key, title, file, line, projectName, path);
         CURRENT.set(slot);
         return slot;
     }
@@ -117,14 +122,11 @@ public final class RlInternal {
             }
             slot.errorStack = sb.toString();
         }
-        FINISHED.merge(slot.id, slot, (existing, incoming) -> {
-            // Same test seen twice — treat as flaky if outcomes differ, else keep the later result.
-            if (!Objects.equals(existing.outcome, incoming.outcome)) {
-                incoming.outcome = ("passed".equals(existing.outcome) || "passed".equals(incoming.outcome))
-                    ? "flaky" : incoming.outcome;
-            }
-            return incoming;
-        });
+        // Unique id per invocation — every begin() call becomes its own row,
+        // which is what data-driven tests and retries need. If a real flaky
+        // detection layer is needed later, it belongs in ReportBuilder on
+        // top of the raw invocations, not here.
+        FINISHED.put(slot.id, slot);
         CURRENT.remove();
     }
 
