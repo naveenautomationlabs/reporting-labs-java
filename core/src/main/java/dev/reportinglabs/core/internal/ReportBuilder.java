@@ -16,7 +16,6 @@ import java.util.*;
  * the file small.
  */
 public final class ReportBuilder {
-    private static final int HISTORY_KEEP = 30;
 
     private ReportBuilder() {}
 
@@ -63,7 +62,7 @@ public final class ReportBuilder {
         History history = History.readAndAppend(now, suiteStart, testList, stats);
         data.put("history", history.entries);
 
-        data.put("bdd", false);
+        data.put("bdd", Config.bdd());
         data.put("rootDir", System.getProperty("user.dir", ""));
         data.put("env", envRows());
         data.put("runStatus", failed > 0 ? "failed" : "passed");
@@ -71,22 +70,19 @@ public final class ReportBuilder {
         data.put("globalOutput", Collections.emptyList());
 
         Map<String, Object> options = new LinkedHashMap<>();
-        options.put("theme", Config.theme());
-        options.put("palette", Config.palette());
-        options.put("embedFonts", true);
-        options.put("sections", Collections.emptyList());
-        Map<String, Object> widgets = new LinkedHashMap<>();
-        for (String w : new String[]{"overviewCards","breakdown","needsAttention","failureClusters","trend","slowest","env"}) {
-            widgets.put(w, true);
-        }
-        options.put("widgets", widgets);
-        options.put("dimensions", Arrays.asList("priority","severity","owner","feature"));
-        options.put("dimensionOrder", Collections.emptyMap());
+        options.put("theme",          Config.theme());
+        options.put("palette",        Config.palette());
+        options.put("accent",         Config.accent());
+        options.put("customCss",      Config.customCss());
+        options.put("embedFonts",     Config.embedFonts());
+        options.put("editorLinks",    Config.editorLinks());
+        options.put("widgets",        Config.widgets());
+        options.put("dimensions",     Config.dimensions());
+        options.put("dimensionOrder", Config.dimensionOrder());
+        options.put("links",          Config.links());
+        options.put("sections",       Config.sections());
         Map<String, Object> project = Config.project();
         if (project != null) options.put("project", project);
-        options.put("links", Config.links());
-        options.put("customCss", "");
-        options.put("editorLinks", false);
         data.put("options", options);
 
         return data;
@@ -138,6 +134,11 @@ public final class ReportBuilder {
         addEnv(rows, "Runtime",  System.getProperty("java.runtime.name"));
         addEnv(rows, "OS",       System.getProperty("os.name") + " " + System.getProperty("os.version") + " (" + System.getProperty("os.arch") + ")");
         addEnv(rows, "User",     System.getProperty("user.name"));
+        // Extra rows from reporting-labs.env.* — values that look like URLs
+        // become links in the template's Environment card.
+        for (Map.Entry<String, String> e : Config.env().entrySet()) {
+            addEnv(rows, e.getKey(), e.getValue());
+        }
         return rows;
     }
     private static void addEnv(List<Map<String, Object>> rows, String k, String v) {
@@ -155,7 +156,8 @@ public final class ReportBuilder {
         History(List<Map<String, Object>> entries) { this.entries = entries; }
 
         static History readAndAppend(long now, long start, List<Map<String, Object>> tests, Map<String, Object> stats) {
-            Path file = Paths.get(System.getProperty("user.dir", "."), "reporting-labs.history.json");
+            if (!Config.historyEnabled()) return new History(Collections.emptyList());
+            Path file = Paths.get(System.getProperty("user.dir", "."), Config.historyFile());
             List<Map<String, Object>> entries = new ArrayList<>();
             if (Files.exists(file)) {
                 try {
@@ -194,7 +196,8 @@ public final class ReportBuilder {
             }
             row.put("tests", ttm);
             entries.add(row);
-            while (entries.size() > HISTORY_KEEP) entries.remove(0);
+            int keep = Math.max(1, Config.historyKeep());
+            while (entries.size() > keep) entries.remove(0);
             try {
                 Files.write(file, Json.write(entries).getBytes(StandardCharsets.UTF_8));
             } catch (IOException e) {

@@ -62,7 +62,7 @@ public final class RlInternal {
     private static final AtomicInteger IDX = new AtomicInteger();
     private static final java.util.concurrent.atomic.AtomicLong SEQ = new java.util.concurrent.atomic.AtomicLong();
     private static final long SUITE_START = System.currentTimeMillis();
-    private static final Masker MASKER = new Masker();
+    private static final Masker MASKER = new Masker(Config.maskKeys());
 
     public static TestSlot current() { return CURRENT.get(); }
     public static Masker masker()    { return MASKER; }
@@ -219,7 +219,7 @@ public final class RlInternal {
         if (!dir.exists() && !dir.mkdirs()) {
             throw new IllegalStateException("reporting-labs: could not create " + dir.getAbsolutePath());
         }
-        java.io.File out = new java.io.File(dir, "index.html");
+        java.io.File out = new java.io.File(dir, Config.outputFile());
         try (java.io.OutputStream fos = new java.io.FileOutputStream(out)) {
             fos.write(html.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         } catch (java.io.IOException e) {

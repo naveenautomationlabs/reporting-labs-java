@@ -17,7 +17,9 @@ import java.util.*;
 public final class TemplateRenderer {
 
     private static final String RESOURCE = "reporting-labs/template.html";
-    private static final String PLACEHOLDER = "__RL_DATA__";
+    private static final String P_DATA        = "__RL_DATA__";
+    private static final String P_ACCENT_CSS  = "__RL_ACCENT_CSS__";
+    private static final String P_CUSTOM_CSS  = "__RL_CUSTOM_CSS__";
     private static volatile String cached;
 
     private TemplateRenderer() {}
@@ -25,21 +27,58 @@ public final class TemplateRenderer {
     /** Renders the report HTML for the given data map. */
     public static String render(Map<String, Object> data) {
         String tpl = template();
+
+        // Fill the render-time overrides. Empty string is fine — the template
+        // shape stays valid CSS/HTML either way.
+        String accent    = optString(data, "options.accent");
+        String customCss = optString(data, "options.customCss");
+
+        String accentCss = (accent == null || accent.isEmpty())
+            ? ""
+            : ":root{--accent:" + escapeForCss(accent) + "!important}";
+
+        String customCssOut = customCss == null ? "" : customCss;
+
         String json = Json.write(data);
-        // Guard against a </script sequence inside JSON string values ending the
-        // rl-data script tag early. Same defence as the JS reporter.
+        // Guard against a </script sequence inside JSON string values ending
+        // the rl-data script tag early. Same defence as the JS reporter.
         json = json.replace("</script", "<\\/script");
-        int idx = tpl.indexOf(PLACEHOLDER);
+
+        String out = tpl;
+        out = replaceOnce(out, P_ACCENT_CSS, accentCss);
+        out = replaceOnce(out, P_CUSTOM_CSS, customCssOut);
+        out = replaceOnce(out, P_DATA,       json);
+        return out;
+    }
+
+    private static String replaceOnce(String haystack, String needle, String replacement) {
+        int idx = haystack.indexOf(needle);
         if (idx < 0) {
             throw new IllegalStateException(
-                "reporting-labs: template.html is missing the __RL_DATA__ placeholder. " +
-                "Was the resource swapped out or corrupted?");
+                "reporting-labs: template.html is missing the " + needle + " placeholder. " +
+                "Was the bundled resource swapped out or corrupted?");
         }
-        StringBuilder sb = new StringBuilder(tpl.length() + json.length());
-        sb.append(tpl, 0, idx);
-        sb.append(json);
-        sb.append(tpl, idx + PLACEHOLDER.length(), tpl.length());
+        StringBuilder sb = new StringBuilder(haystack.length() + replacement.length());
+        sb.append(haystack, 0, idx);
+        sb.append(replacement);
+        sb.append(haystack, idx + needle.length(), haystack.length());
         return sb.toString();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static String optString(Map<String, Object> data, String path) {
+        Object v = data;
+        for (String part : path.split("\\.")) {
+            if (!(v instanceof Map)) return null;
+            v = ((Map<String, Object>) v).get(part);
+        }
+        return v == null ? null : v.toString();
+    }
+
+    /** Keep to a safe subset. Sanitises anything that could escape the
+     *  `:root{--accent: X !important}` rule. */
+    private static String escapeForCss(String s) {
+        return s.replaceAll("[<>\"'\\\\;{}\\r\\n]", "");
     }
 
     /** Loads the template. Callable at any point — the JVM shutdown hook
