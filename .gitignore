@@ -11,5 +11,10 @@ target/
 build/
 .gradle/
 reporting-labs.history.json
-reporting-labs/
+# Only the test-output directory, not any 'reporting-labs' folder anywhere.
+# The broad `reporting-labs/` pattern also masked the embedded template
+# resource at core/src/main/resources/reporting-labs/, which broke every
+# published JAR — the resource wasn't in git at all.
+/reporting-labs/
+**/target/reporting-labs/
 *.log
