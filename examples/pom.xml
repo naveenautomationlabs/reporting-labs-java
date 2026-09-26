@@ -58,12 +58,14 @@
           </execution>
         </executions>
       </plugin>
+      <!-- No skipPublishing here — the aggregate publish must run once
+           in the last reactor module and picks up whatever was staged
+           earlier. Examples don't stage anything because maven-deploy-plugin
+           is skipped above, so only the four library modules end up on
+           Central. -->
       <plugin>
         <groupId>org.sonatype.central</groupId>
         <artifactId>central-publishing-maven-plugin</artifactId>
-        <configuration>
-          <skipPublishing>true</skipPublishing>
-        </configuration>
       </plugin>
     </plugins>
   </build>
