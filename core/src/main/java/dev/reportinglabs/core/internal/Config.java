@@ -100,15 +100,16 @@ public final class Config {
 
     public static String title()        { return get("title", "Test report"); }
 
-    /** Default is `target/reporting-labs` so the report lands under the
-     *  standard Maven build output folder and is wiped by `mvn clean`.
-     *  Set to `reporting-labs` (or any other path) to override. */
+    /** Default is `target/reporting-labs` for Maven (`target/` exists) or
+     *  `build/reporting-labs` for Gradle (`build/` exists), so the report
+     *  lands under the standard build output folder and is wiped by
+     *  `mvn clean` / `gradle clean`. Set to any path to override. */
     public static String outputFolder() {
         String v = get("outputFolder", null);
         if (v != null) return v;
-        // Fallback: if a `target/` dir exists in CWD, put the report there;
-        // otherwise fall back to `./reporting-labs` (matches the Node.js side).
-        return new File("target").isDirectory() ? "target/reporting-labs" : "reporting-labs";
+        if (new File("target").isDirectory()) return "target/reporting-labs";   // Maven
+        if (new File("build").isDirectory())  return "build/reporting-labs";    // Gradle
+        return "reporting-labs";                                                // fallback (matches Node.js side)
     }
 
     public static String outputFile()   { return get("outputFile", "index.html"); }
