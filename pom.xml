@@ -189,14 +189,19 @@
           <plugin>
             <groupId>org.sonatype.central</groupId>
             <artifactId>central-publishing-maven-plugin</artifactId>
-            <!-- 0.6.0 cannot parse the 'warnings' field Central now returns.
-                 0.7.0+ knows about it. -->
-            <version>0.7.0</version>
+            <!-- 0.7.0 uploads correctly but chokes on the 'warnings' field
+                 Central now returns from the deployment-status endpoint —
+                 fixed in 0.8.0. -->
+            <version>0.8.0</version>
             <extensions>true</extensions>
             <configuration>
               <publishingServerId>central</publishingServerId>
               <autoPublish>false</autoPublish>
-              <waitUntil>validated</waitUntil>
+              <!-- Wait until the bundle has actually landed, not until
+                   Central finishes validating it. Validation can be watched
+                   on the portal (https://central.sonatype.com/publishing/deployments).
+                   This also side-steps the 0.7.x poll-response parse bug. -->
+              <waitUntil>uploaded</waitUntil>
             </configuration>
           </plugin>
         </plugins>
