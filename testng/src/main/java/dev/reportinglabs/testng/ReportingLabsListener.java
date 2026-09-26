@@ -26,6 +26,26 @@ public class ReportingLabsListener implements ITestListener {
         List<String> path = classPath(cls);
         RlInternal.begin(title, file, 0, "testng", path);
         applyAnnotations(cls, m, tr);
+        captureParameters(tr);
+    }
+
+    /** Auto-capture data-provider parameters as a pinned data block on the
+     *  current test. Turns a single test method run against N rows into N
+     *  rows in the report, each showing exactly the parameters it ran with,
+     *  without any Rl.testData() call from the test itself. */
+    private static void captureParameters(ITestResult tr) {
+        Object[] params = tr.getParameters();
+        if (params == null || params.length == 0) return;
+        Method m = tr.getMethod().getConstructorOrMethod().getMethod();
+        java.lang.reflect.Parameter[] formal = m.getParameters();
+        Map<String, Object> row = new LinkedHashMap<>();
+        for (int i = 0; i < params.length; i++) {
+            String name = (i < formal.length && formal[i].isNamePresent())
+                ? formal[i].getName()
+                : "arg" + i;
+            row.put(name, params[i] == null ? "null" : params[i].toString());
+        }
+        RlInternal.testData("Parameters", row);
     }
 
     @Override public void onTestSuccess(ITestResult tr) { RlInternal.end(null, false); }
