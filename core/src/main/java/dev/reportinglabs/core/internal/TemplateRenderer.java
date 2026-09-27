@@ -45,10 +45,23 @@ public final class TemplateRenderer {
         json = json.replace("</script", "<\\/script");
 
         String out = tpl;
-        out = replaceOnce(out, P_ACCENT_CSS, accentCss);
-        out = replaceOnce(out, P_CUSTOM_CSS, customCssOut);
-        out = replaceOnce(out, P_DATA,       json);
+        // Only the data placeholder is mandatory. The CSS hooks depend on the
+        // template snapshot's vintage; when absent, fall back to a <style>
+        // block in <head> so accent / customCss still work and — above all —
+        // the report is still written.
+        out = replaceOrInjectStyle(out, P_ACCENT_CSS, accentCss);
+        out = replaceOrInjectStyle(out, P_CUSTOM_CSS, customCssOut);
+        out = replaceOnce(out, P_DATA, json);
         return out;
+    }
+
+    private static String replaceOrInjectStyle(String html, String needle, String css) {
+        int idx = html.indexOf(needle);
+        if (idx >= 0) return splice(html, idx, needle.length(), css);
+        if (css.isEmpty()) return html;
+        int head = html.indexOf("</head>");
+        if (head < 0) return html;
+        return splice(html, head, 0, "<style>" + css + "</style>");
     }
 
     private static String replaceOnce(String haystack, String needle, String replacement) {
@@ -58,10 +71,14 @@ public final class TemplateRenderer {
                 "reporting-labs: template.html is missing the " + needle + " placeholder. " +
                 "Was the bundled resource swapped out or corrupted?");
         }
-        StringBuilder sb = new StringBuilder(haystack.length() + replacement.length());
-        sb.append(haystack, 0, idx);
+        return splice(haystack, idx, needle.length(), replacement);
+    }
+
+    private static String splice(String s, int at, int len, String replacement) {
+        StringBuilder sb = new StringBuilder(s.length() + replacement.length());
+        sb.append(s, 0, at);
         sb.append(replacement);
-        sb.append(haystack, idx + needle.length(), haystack.length());
+        sb.append(s, at + len, s.length());
         return sb.toString();
     }
 

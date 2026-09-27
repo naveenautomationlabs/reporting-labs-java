@@ -899,7 +899,11 @@ function chartTrendByPriority(){
   const yAt = pct => padT + (100-pct)/100*chartH;
   const grid = [0,25,50,75,100].map(y=>'<line x1="'+padL+'" x2="'+(W-padR)+'" y1="'+yAt(y)+'" y2="'+yAt(y)+'" stroke="var(--line)" stroke-dasharray="2 3"/><text x="'+(padL-6)+'" y="'+(yAt(y)+3)+'" text-anchor="end" font-size="10" fill="var(--ink-3)">'+y+'%</text>').join('');
   const lines = series.map(sr=>{
-    const d = sr.points.map((v,i)=> v===null? null : (i===0?'M':'L')+xAt(i)+' '+yAt(v)).filter(Boolean).join(' ');
+    // A series may start with (or contain) nulls — runs where this priority
+    // had no tests. Each stretch after a gap must restart with M, or the
+    // path begins with L and the browser rejects it.
+    let pen=false;
+    const d = sr.points.map((v,i)=>{ if(v===null){ pen=false; return null; } const cmd=pen?'L':'M'; pen=true; return cmd+xAt(i)+' '+yAt(v); }).filter(Boolean).join(' ');
     const dots = sr.points.map((v,i)=> v===null? '' : '<circle cx="'+xAt(i)+'" cy="'+yAt(v)+'" r="2.5" fill="'+sr.color+'"><title>'+sr.pri+' · '+v+'% at run '+(i+1)+'</title></circle>').join('');
     return '<path d="'+d+'" fill="none" stroke="'+sr.color+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'+dots;
   }).join('');
