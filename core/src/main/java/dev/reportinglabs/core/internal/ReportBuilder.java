@@ -109,7 +109,14 @@ public final class ReportBuilder {
         m.put("line", t.line);
         m.put("project", t.projectName);
         m.put("tags", t.tags);
-        m.put("annotations", Collections.emptyList());
+        List<Map<String, Object>> annotations = new ArrayList<>();
+        if (t.skipReason != null) {
+            Map<String, Object> a = new LinkedHashMap<>();
+            a.put("type", "skip");
+            a.put("description", t.skipReason);
+            annotations.add(a);
+        }
+        m.put("annotations", annotations);
         m.put("meta", t.meta);
         m.put("outcome", t.outcome);
         m.put("duration", t.duration);

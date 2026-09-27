@@ -38,20 +38,26 @@ public class ReportingLabsExtension
 
     @Override
     public void afterTestExecution(ExtensionContext ctx) {
-        RlInternal.end(ctx.getExecutionException().orElse(null), false);
+        end(ctx);
     }
 
     @Override
     public void afterEach(ExtensionContext ctx) {
         // Still open here means the test body never ran (@BeforeEach failed).
-        if (RlInternal.current() != null) {
-            RlInternal.end(ctx.getExecutionException().orElse(null), false);
-        }
+        if (RlInternal.current() != null) end(ctx);
+    }
+
+    /** Assumption failures (Assumptions.assumeTrue) abort the test — that is
+     *  a skip with a reason, not a failure. */
+    private static void end(ExtensionContext ctx) {
+        Throwable t = ctx.getExecutionException().orElse(null);
+        boolean aborted = t instanceof org.opentest4j.TestAbortedException;
+        RlInternal.end(t, aborted);
     }
 
     @Override public void testDisabled(ExtensionContext ctx, Optional<String> reason) {
         begin(ctx);
-        RlInternal.end(null, true);
+        RlInternal.end(null, true, reason.orElse(null));
     }
 
     @Override public void testSuccessful(ExtensionContext ctx) { /* handled in afterTestExecution */ }

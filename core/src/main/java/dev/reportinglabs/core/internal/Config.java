@@ -28,15 +28,21 @@ public final class Config {
         for (String path : paths) {
             File f = new File(path);
             if (f.exists()) {
-                try (InputStream in = new FileInputStream(f)) { p.load(in); break; } catch (IOException ignore) {}
+                try (InputStream in = new FileInputStream(f)) { load(p, in); break; } catch (IOException ignore) {}
             }
         }
         if (p.isEmpty()) {
             try (InputStream in = Config.class.getClassLoader().getResourceAsStream("reporting-labs.properties")) {
-                if (in != null) p.load(in);
+                if (in != null) load(p, in);
             } catch (IOException ignore) {}
         }
         return p;
+    }
+
+    // Properties.load(InputStream) assumes ISO-8859-1, which turns an em dash
+    // or any non-ASCII title into mojibake. Files are UTF-8 in practice.
+    private static void load(Properties p, InputStream in) throws IOException {
+        p.load(new InputStreamReader(in, java.nio.charset.StandardCharsets.UTF_8));
     }
 
     // ---------- primitive lookup ----------

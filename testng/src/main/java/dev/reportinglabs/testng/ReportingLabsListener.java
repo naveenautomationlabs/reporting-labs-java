@@ -73,7 +73,7 @@ public class ReportingLabsListener implements ITestListener, IConfigurationListe
 
     @Override public void onTestSuccess(ITestResult tr) { RlInternal.end(null, false); }
     @Override public void onTestFailure(ITestResult tr) { RlInternal.end(tr.getThrowable(), false); }
-    @Override public void onTestSkipped(ITestResult tr) { PRESTARTED.remove(); RlInternal.end(null, true); }
+    @Override public void onTestSkipped(ITestResult tr) { PRESTARTED.remove(); RlInternal.end(tr.getThrowable(), true); }
     @Override public void onTestFailedButWithinSuccessPercentage(ITestResult tr) { RlInternal.end(tr.getThrowable(), false); }
 
     // ---- helpers ----

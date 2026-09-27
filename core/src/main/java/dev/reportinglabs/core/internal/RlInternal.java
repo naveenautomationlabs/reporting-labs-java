@@ -44,6 +44,7 @@ public final class RlInternal {
         long duration = 0;
         String errorMessage;
         String errorStack;
+        String skipReason;            // SkipException / @Disabled / assumption message
 
         TestSlot(String id, String key, String title, String file, int line, String projectName, List<String> path) {
             this.id = id;
@@ -134,14 +135,23 @@ public final class RlInternal {
     }
 
     /** Called by a framework listener when a test finishes. Pass null error
-     *  for a pass, or the failure Throwable. */
+     *  for a pass, or the failure Throwable. For a skip, the throwable's
+     *  message (SkipException, TestAbortedException) becomes the reason. */
     public static void end(Throwable failure, boolean skipped) {
+        end(failure, skipped, skipped && failure != null ? failure.getMessage() : null);
+    }
+
+    public static void end(Throwable failure, boolean skipped, String skipReason) {
         TestSlot slot = CURRENT.get();
         if (slot == null) return;
+        if (skipped && skipReason != null && !skipReason.isEmpty()) slot.skipReason = skipReason;
         // Fire onEnd hooks first so attachments they add (screenshot, trace)
-        // land in the slot before it's snapshotted.
+        // land in the slot before it's snapshotted. A skip's throwable
+        // (SkipException) is a reason, not a failure — hooks must not treat
+        // it as one or a skipped test would get a failure screenshot.
+        Throwable forHooks = skipped ? null : failure;
         for (java.util.function.Consumer<Throwable> cb : slot.onEnd) {
-            try { cb.accept(failure); } catch (Throwable ignore) {}
+            try { cb.accept(forHooks); } catch (Throwable ignore) {}
         }
         slot.duration = Math.max(0, System.currentTimeMillis() - slot.startTime);
         if (skipped) {
