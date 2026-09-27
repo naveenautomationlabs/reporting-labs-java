@@ -64,6 +64,14 @@ public final class RlInternal {
     private static final long SUITE_START = System.currentTimeMillis();
     private static final Masker MASKER = new Masker(Config.maskKeys());
 
+    /** Every thread that runs at least one test lands here. The unique
+     *  count is the real number of concurrent workers this suite used,
+     *  regardless of whether the parallelism was configured in Surefire,
+     *  in testng.xml or in Gradle's test task. */
+    private static final Set<Long> WORKER_THREADS = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    public static int workerThreadCount() { return Math.max(1, WORKER_THREADS.size()); }
+
     public static TestSlot current() { return CURRENT.get(); }
     public static Masker masker()    { return MASKER; }
 
@@ -92,6 +100,7 @@ public final class RlInternal {
         String id  = key + "#" + SEQ.incrementAndGet();
         TestSlot slot = new TestSlot(id, key, title, file, line, projectName, path);
         CURRENT.set(slot);
+        WORKER_THREADS.add(Thread.currentThread().getId());
         return slot;
     }
 

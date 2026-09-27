@@ -55,10 +55,13 @@ public final class RlPlaywright {
 
         installShutdownHook();
 
-        // Wire failure screenshot + trace stop into the test's finish hook.
+        // Wire capture hooks into the test's finish. Screenshot and trace
+        // both honour reporting-labs.screenshot / .trace policy — user can
+        // disable either without touching test code.
         RlInternal.onEndCurrent(failure -> {
-            if (failure != null) screenshotOnFailure();
-            finish();
+            boolean failed = failure != null;
+            if (Rl.shouldCaptureScreenshot(failed)) screenshotOnFailure();
+            finish(failed);
         });
 
         PageState st = new PageState(page);
@@ -70,12 +73,16 @@ public final class RlPlaywright {
         page.onRequestFinished(st::onRequestFinished);
         page.onRequestFailed(st::onRequestFailed);
 
-        // Trace start (best-effort; ignore if tracing is unavailable)
-        try {
-            page.context().tracing().start(new Tracing.StartOptions()
-                .setScreenshots(true).setSnapshots(true).setSources(false));
-            st.tracing = true;
-        } catch (Throwable ignore) { /* older Playwright, or already tracing */ }
+        // Start a trace only if the policy could ever want one (skip when
+        // trace=never, so we don't pay the recording cost). Whether the
+        // trace is actually attached is decided in finish(failed).
+        if (!"never".equals(Rl.traceMode())) {
+            try {
+                page.context().tracing().start(new Tracing.StartOptions()
+                    .setScreenshots(true).setSnapshots(true).setSources(false));
+                st.tracing = true;
+            } catch (Throwable ignore) { /* older Playwright, or already tracing */ }
+        }
 
         return page;
     }
@@ -101,13 +108,15 @@ public final class RlPlaywright {
     }
 
     /** Called by the framework binding on test finish (pass or fail) —
-     *  stops the trace, saves it, attaches it, and detaches page. */
-    public static void finish() {
+     *  stops the trace, attaches it only if the policy says so, detaches
+     *  the page. */
+    public static void finish() { finish(false); }
+    public static void finish(boolean failed) {
         Page p = CURRENT_PAGE.get();
         CURRENT_PAGE.remove();
         if (p == null) return;
         PageState st = STATES.remove(p);
-        if (st != null) st.finish();
+        if (st != null) st.finish(Rl.shouldCaptureTrace(failed));
     }
 
     private static void installShutdownHook() {
@@ -156,17 +165,28 @@ public final class RlPlaywright {
             } catch (Throwable ignore) {}
         }
 
-        void finish() {
+        /** Stops the trace unconditionally (so recording buffers don't
+         *  leak) and attaches the zip only if the caller asked for it. */
+        void finish(boolean attachTrace) {
             if (tracing) {
                 try {
-                    Path zip = Files.createTempFile("rl-trace-", ".zip");
-                    page.context().tracing().stop(new Tracing.StopOptions().setPath(zip));
-                    byte[] bytes = Files.readAllBytes(zip);
-                    Rl.attach("trace.zip", "application/zip", bytes);
-                    try { Files.deleteIfExists(zip); } catch (IOException ignore) {}
+                    if (attachTrace) {
+                        Path zip = Files.createTempFile("rl-trace-", ".zip");
+                        page.context().tracing().stop(new Tracing.StopOptions().setPath(zip));
+                        byte[] bytes = Files.readAllBytes(zip);
+                        Rl.attach("trace.zip", "application/zip", bytes);
+                        try { Files.deleteIfExists(zip); } catch (IOException ignore) {}
+                    } else {
+                        page.context().tracing().stop();
+                    }
                 } catch (Throwable ignore) { /* tracing may not be supported */ }
+                tracing = false;
             }
         }
+
+        /** Overload for the shutdown cleanup path — never attach on shutdown
+         *  (the report has already been written). */
+        void finish() { finish(false); }
 
         private static Map<String, String> toStr(Map<String, String> m) {
             return m == null ? Collections.emptyMap() : m;

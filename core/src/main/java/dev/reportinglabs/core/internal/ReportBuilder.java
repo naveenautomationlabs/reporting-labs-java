@@ -27,9 +27,20 @@ public final class ReportBuilder {
         data.put("generatedAt", now);
         data.put("startTime",   suiteStart);
         data.put("duration",    Math.max(0, now - suiteStart));
-        data.put("metadata",    Config.metadata());
+        // Merge CI-detected metadata (build / branch / commit / ci) with what
+        // the user explicitly set. User wins if a key overlaps.
+        Map<String, String> md = new LinkedHashMap<>();
+        md.putAll(Config.ciDetected());
+        md.putAll(Config.metadata());
+        data.put("metadata",    md);
+
         data.put("projects",    Config.projects());
-        data.put("workers",     Config.workers());
+
+        // Real worker count = number of distinct threads that actually ran a
+        // test in this JVM. Falls back to the manual override if the user set
+        // reporting-labs.workers, else the auto-detected count.
+        Integer wOverride = Config.workersOverride();
+        data.put("workers",     wOverride != null ? wOverride : RlInternal.workerThreadCount());
 
         List<Map<String, Object>> testList = new ArrayList<>(tests.size());
         int i = 0;

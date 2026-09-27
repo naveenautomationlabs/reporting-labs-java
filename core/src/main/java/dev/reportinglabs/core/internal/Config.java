@@ -118,6 +118,47 @@ public final class Config {
      *  `never` (default) | `always` | `on-failure`. Auto-skipped when running
      *  headless or on CI regardless of the setting. */
     public static String open()         { return get("open", "never"); }
+
+    /** Capture policy for screenshots. `on-failure` (default) | `always` |
+     *  `only-on-pass` | `never`. Read by reporting-labs-playwright's auto
+     *  capture; also readable via {@link dev.reportinglabs.core.Rl#screenshotMode()}
+     *  so Selenium / plain-Java tests can honour the same setting from an
+     *  @AfterMethod hook. */
+    public static String screenshot()   { return normalize(get("screenshot", "on-failure")); }
+
+    /** Trace-capture policy for Playwright. Same values as `screenshot`
+     *  (default `on-failure`) plus `retain-on-failure` which is treated the
+     *  same as `on-failure`. */
+    public static String trace()        { return normalize(get("trace", "on-failure")); }
+
+    /** Video-capture policy — informational for Selenium/Playwright users
+     *  who record their own videos. The library never records; users attach
+     *  bytes via Rl.attach(). Same values as `screenshot`. */
+    public static String video()        { return normalize(get("video", "off")); }
+
+    private static String normalize(String v) {
+        if (v == null) return "off";
+        String s = v.trim().toLowerCase(Locale.ROOT);
+        switch (s) {
+            case "on":                 return "always";
+            case "off":                return "never";
+            case "retain-on-failure":  return "on-failure";
+            default:                   return s;
+        }
+    }
+
+    /** Convenience: should the caller capture given the current mode and
+     *  whether the test failed? Handles all policy values. */
+    public static boolean shouldCapture(String mode, boolean failed) {
+        if (mode == null) return false;
+        switch (mode) {
+            case "always":       return true;
+            case "on-failure":   return failed;
+            case "only-on-pass": return !failed;
+            case "never":        return false;
+            default:             return false;
+        }
+    }
     public static String theme()        { return get("theme", "auto"); }
     public static String palette()      { return get("palette", "lab"); }
     public static String accent()       { return get("accent", ""); }
@@ -145,8 +186,93 @@ public final class Config {
         return new LinkedHashMap<>(raw);
     }
 
-    public static List<String> projects() { return getList("projects", Collections.singletonList("java")); }
-    public static int workers()           { return getInt("workers", 1); }
+    /** Manual override; the actual thread count used at runtime is
+     *  auto-detected in ReportBuilder from RlInternal.workerThreadCount(). */
+    public static Integer workersOverride() {
+        String v = get("workers", null);
+        if (v == null) return null;
+        try { return Integer.parseInt(v.trim()); } catch (NumberFormatException e) { return null; }
+    }
+
+    /** Purely informational grouping. Blank by default — Java doesn't have
+     *  Playwright's project concept unless the user opts in. */
+    public static List<String> projects() { return getList("projects", Collections.emptyList()); }
+
+    // ---------- CI auto-detect ----------
+
+    /** Pulls build number, git branch and commit hash out of common CI env
+     *  vars (GitHub Actions, Jenkins, GitLab CI, CircleCI, Travis, Buildkite,
+     *  TeamCity, Azure Pipelines). Anything the user already set in
+     *  reporting-labs.metadata.<key> wins over the auto value.
+     *
+     *  Called by ReportBuilder — merges into data.metadata so the trend
+     *  chart's build label just works on any pipeline. */
+    public static Map<String, String> ciDetected() {
+        Map<String, String> out = new LinkedHashMap<>();
+        String env = System.getenv("GITHUB_ACTIONS");
+        if (env != null && !env.isEmpty()) {
+            put(out, "build",  System.getenv("GITHUB_RUN_NUMBER"));
+            put(out, "branch", System.getenv("GITHUB_REF_NAME"));
+            put(out, "commit", shortSha(System.getenv("GITHUB_SHA")));
+            put(out, "ci",     "github-actions");
+            return out;
+        }
+        if (System.getenv("JENKINS_URL") != null) {
+            put(out, "build",  System.getenv("BUILD_NUMBER"));
+            put(out, "branch", System.getenv("GIT_BRANCH"));
+            put(out, "commit", shortSha(System.getenv("GIT_COMMIT")));
+            put(out, "ci",     "jenkins");
+            return out;
+        }
+        if (System.getenv("GITLAB_CI") != null) {
+            put(out, "build",  System.getenv("CI_PIPELINE_IID"));
+            put(out, "branch", System.getenv("CI_COMMIT_REF_NAME"));
+            put(out, "commit", shortSha(System.getenv("CI_COMMIT_SHA")));
+            put(out, "ci",     "gitlab-ci");
+            return out;
+        }
+        if (System.getenv("CIRCLECI") != null) {
+            put(out, "build",  System.getenv("CIRCLE_BUILD_NUM"));
+            put(out, "branch", System.getenv("CIRCLE_BRANCH"));
+            put(out, "commit", shortSha(System.getenv("CIRCLE_SHA1")));
+            put(out, "ci",     "circleci");
+            return out;
+        }
+        if (System.getenv("TRAVIS") != null) {
+            put(out, "build",  System.getenv("TRAVIS_BUILD_NUMBER"));
+            put(out, "branch", System.getenv("TRAVIS_BRANCH"));
+            put(out, "commit", shortSha(System.getenv("TRAVIS_COMMIT")));
+            put(out, "ci",     "travis");
+            return out;
+        }
+        if (System.getenv("BUILDKITE") != null) {
+            put(out, "build",  System.getenv("BUILDKITE_BUILD_NUMBER"));
+            put(out, "branch", System.getenv("BUILDKITE_BRANCH"));
+            put(out, "commit", shortSha(System.getenv("BUILDKITE_COMMIT")));
+            put(out, "ci",     "buildkite");
+            return out;
+        }
+        if (System.getenv("TEAMCITY_VERSION") != null) {
+            put(out, "build",  System.getenv("BUILD_NUMBER"));
+            put(out, "ci",     "teamcity");
+            return out;
+        }
+        if (System.getenv("TF_BUILD") != null) {  // Azure Pipelines
+            put(out, "build",  System.getenv("BUILD_BUILDNUMBER"));
+            put(out, "branch", System.getenv("BUILD_SOURCEBRANCHNAME"));
+            put(out, "commit", shortSha(System.getenv("BUILD_SOURCEVERSION")));
+            put(out, "ci",     "azure-pipelines");
+            return out;
+        }
+        return out;
+    }
+
+    private static void put(Map<String, String> out, String key, String value) {
+        if (value != null && !value.isEmpty()) out.put(key, value);
+    }
+    private static String shortSha(String s) {
+        return (s == null || s.length() < 7) ? s : s.substring(0, 7);
+    }
 
     // ---------- history ----------
 

@@ -1,5 +1,6 @@
 package dev.reportinglabs.core;
 
+import dev.reportinglabs.core.internal.Config;
 import dev.reportinglabs.core.internal.RlInternal;
 
 import java.util.Map;
@@ -56,5 +57,46 @@ public final class Rl {
     /** Attach a binary blob (screenshot, video, trace, whatever). */
     public static void attach(String name, String contentType, byte[] bytes) {
         RlInternal.attach(name, contentType, bytes);
+    }
+
+    // ---- capture policy helpers ----
+    //
+    // The library never takes a screenshot itself — the caller does, from
+    // whichever driver they're using (Selenium, Playwright, Appium, ...).
+    // These helpers expose the reporting-labs.screenshot / .video / .trace
+    // config so a base test class can decide whether to capture without
+    // rolling its own switch. RlPlaywright.attach(page) already honours
+    // Rl.screenshotMode() and Rl.traceMode() automatically.
+
+    /** `always` | `on-failure` | `only-on-pass` | `never`. Default `on-failure`. */
+    public static String screenshotMode() { return Config.screenshot(); }
+
+    /** Same shape as {@link #screenshotMode()}, default `on-failure`. */
+    public static String traceMode()      { return Config.trace(); }
+
+    /** Same shape as {@link #screenshotMode()}, default `never`. */
+    public static String videoMode()      { return Config.video(); }
+
+    /** True when the current mode says to capture given the outcome. Example:
+     *  <pre>{@code
+     *  @AfterMethod
+     *  void afterMethod(ITestResult r) {
+     *    boolean failed = r.getStatus() != ITestResult.SUCCESS;
+     *    if (Rl.shouldCaptureScreenshot(failed)) {
+     *      Rl.attach("failure.png", "image/png",
+     *        ((TakesScreenshot) driver).getScreenshotAs(OutputType.BYTES));
+     *    }
+     *  }
+     *  }</pre> */
+    public static boolean shouldCaptureScreenshot(boolean failed) {
+        return Config.shouldCapture(Config.screenshot(), failed);
+    }
+
+    public static boolean shouldCaptureTrace(boolean failed) {
+        return Config.shouldCapture(Config.trace(), failed);
+    }
+
+    public static boolean shouldCaptureVideo(boolean failed) {
+        return Config.shouldCapture(Config.video(), failed);
     }
 }
