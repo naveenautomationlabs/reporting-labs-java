@@ -59,6 +59,40 @@ public final class Rl {
         RlInternal.attach(name, contentType, bytes);
     }
 
+    // ---- steps ----
+
+    /** A block of test code that may throw. */
+    @FunctionalInterface public interface Body { void run() throws Exception; }
+    /** A block of test code that returns a value and may throw. */
+    @FunctionalInterface public interface Supplier<T> { T get() throws Exception; }
+
+    /** Runs {@code body} as a named, timed step in the report — the Java
+     *  equivalent of Playwright's {@code test.step()}. Steps nest; a step
+     *  whose body throws is marked failed with the exception, and the
+     *  exception propagates unchanged.
+     *  <pre>{@code
+     *  Rl.step("login as demo", () -> {
+     *      page.fill("#email", "demo@shop.io");
+     *      page.click("#submit");
+     *  });
+     *  }</pre> */
+    public static void step(String title, Body body) {
+        RlInternal.Step s = RlInternal.stepBegin(title, "test.step");
+        try { body.run(); RlInternal.stepEnd(s, null); }
+        catch (Throwable t) { RlInternal.stepEnd(s, t); throw sneaky(t); }
+    }
+
+    /** Same as {@link #step(String, Body)} for a body that returns a value:
+     *  {@code String id = Rl.step("create order", () -> api.create(order));} */
+    public static <T> T step(String title, Supplier<T> body) {
+        RlInternal.Step s = RlInternal.stepBegin(title, "test.step");
+        try { T v = body.get(); RlInternal.stepEnd(s, null); return v; }
+        catch (Throwable t) { RlInternal.stepEnd(s, t); throw sneaky(t); }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <E extends Throwable> RuntimeException sneaky(Throwable t) throws E { throw (E) t; }
+
     // ---- capture policy helpers ----
     //
     // The library never takes a screenshot itself — the caller does, from

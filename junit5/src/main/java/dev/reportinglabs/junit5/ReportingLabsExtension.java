@@ -27,11 +27,19 @@ public class ReportingLabsExtension
 
     static { ShutdownWriter.install(); }
 
+    /** The @BeforeEach / @AfterEach group running on this thread, as a hook step. */
+    private static final ThreadLocal<RlInternal.Step> HOOK = new ThreadLocal<>();
+
     @Override
-    public void beforeEach(ExtensionContext ctx) { begin(ctx); }
+    public void beforeEach(ExtensionContext ctx) {
+        begin(ctx);
+        String names = hookNames(ctx, org.junit.jupiter.api.BeforeEach.class);
+        if (names != null) HOOK.set(RlInternal.hookBegin(true, "@BeforeEach " + names));
+    }
 
     @Override
     public void beforeTestExecution(ExtensionContext ctx) {
+        closeHook(null);
         // Registered without beforeEach having fired (unusual), or no test open.
         if (RlInternal.current() == null) begin(ctx);
     }
@@ -39,12 +47,37 @@ public class ReportingLabsExtension
     @Override
     public void afterTestExecution(ExtensionContext ctx) {
         end(ctx);
+        String names = hookNames(ctx, org.junit.jupiter.api.AfterEach.class);
+        if (names != null) HOOK.set(RlInternal.hookBegin(false, "@AfterEach " + names));
     }
 
     @Override
     public void afterEach(ExtensionContext ctx) {
-        // Still open here means the test body never ran (@BeforeEach failed).
-        if (RlInternal.current() != null) end(ctx);
+        // Still open here means the test body never ran (@BeforeEach failed):
+        // the hook step carries the failure, the test is closed with it.
+        if (RlInternal.current() != null) {
+            closeHook(ctx.getExecutionException().orElse(null));
+            end(ctx);
+        } else {
+            closeHook(null);
+        }
+    }
+
+    private static void closeHook(Throwable error) {
+        RlInternal.Step s = HOOK.get();
+        HOOK.remove();
+        if (s != null) RlInternal.hookEnd(s, error);
+    }
+
+    /** "setUp, openBrowser" — the lifecycle methods of the test class and its
+     *  superclasses carrying the given annotation; null when there are none. */
+    private static String hookNames(ExtensionContext ctx, Class<? extends java.lang.annotation.Annotation> ann) {
+        Class<?> cls = ctx.getTestClass().orElse(null);
+        List<String> names = new ArrayList<>();
+        for (Class<?> c = cls; c != null && c != Object.class; c = c.getSuperclass()) {
+            for (Method m : c.getDeclaredMethods()) if (m.isAnnotationPresent(ann)) names.add(m.getName());
+        }
+        return names.isEmpty() ? null : String.join(", ", names);
     }
 
     /** Assumption failures (Assumptions.assumeTrue) abort the test — that is

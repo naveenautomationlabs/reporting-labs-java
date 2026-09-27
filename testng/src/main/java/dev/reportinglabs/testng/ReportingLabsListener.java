@@ -18,12 +18,43 @@ import java.util.*;
  * @BeforeMethod does (RlPlaywright.attach(page), Rl.log(...)) already has a
  * current test to land on. onTestStart then just reuses that slot.
  */
-public class ReportingLabsListener implements ITestListener, IConfigurationListener {
+public class ReportingLabsListener implements ITestListener, IConfigurationListener, IInvokedMethodListener {
 
     static { ShutdownWriter.install(); }
 
     /** The test method whose slot was opened early by a @BeforeMethod. */
     private static final ThreadLocal<ITestNGMethod> PRESTARTED = new ThreadLocal<>();
+    /** The configuration method currently running on this thread, as a hook step. */
+    private static final ThreadLocal<RlInternal.Step> HOOK = new ThreadLocal<>();
+
+    // ---- configuration methods as "Before Hooks" / "After Hooks" steps ----
+
+    @Override
+    public void beforeInvocation(IInvokedMethod m, ITestResult tr) {
+        if (!m.isConfigurationMethod()) return;
+        ITestNGMethod tm = m.getTestMethod();
+        boolean before = tm.isBeforeMethodConfiguration() || tm.isBeforeClassConfiguration()
+            || tm.isBeforeTestConfiguration() || tm.isBeforeSuiteConfiguration() || tm.isBeforeGroupsConfiguration();
+        HOOK.set(RlInternal.hookBegin(before, hookTitle(tm)));
+    }
+
+    @Override
+    public void afterInvocation(IInvokedMethod m, ITestResult tr) {
+        if (!m.isConfigurationMethod()) return;
+        RlInternal.Step s = HOOK.get();
+        HOOK.remove();
+        if (s != null) RlInternal.hookEnd(s, tr.getThrowable());
+    }
+
+    private static String hookTitle(ITestNGMethod tm) {
+        String kind =
+            tm.isBeforeSuiteConfiguration()  ? "@BeforeSuite"  : tm.isAfterSuiteConfiguration()  ? "@AfterSuite"  :
+            tm.isBeforeTestConfiguration()   ? "@BeforeTest"   : tm.isAfterTestConfiguration()   ? "@AfterTest"   :
+            tm.isBeforeClassConfiguration()  ? "@BeforeClass"  : tm.isAfterClassConfiguration()  ? "@AfterClass"  :
+            tm.isBeforeGroupsConfiguration() ? "@BeforeGroups" : tm.isAfterGroupsConfiguration() ? "@AfterGroups" :
+            tm.isBeforeMethodConfiguration() ? "@BeforeMethod" : tm.isAfterMethodConfiguration() ? "@AfterMethod" : "@Configuration";
+        return kind + " " + tm.getMethodName();
+    }
 
     @Override
     public void beforeConfiguration(ITestResult configResult, ITestNGMethod upcomingTest) {
@@ -72,8 +103,34 @@ public class ReportingLabsListener implements ITestListener, IConfigurationListe
     }
 
     @Override public void onTestSuccess(ITestResult tr) { RlInternal.end(null, false); }
-    @Override public void onTestFailure(ITestResult tr) { RlInternal.end(tr.getThrowable(), false); }
-    @Override public void onTestSkipped(ITestResult tr) { PRESTARTED.remove(); RlInternal.end(tr.getThrowable(), true); }
+    @Override public void onTestFailure(ITestResult tr) {
+        RlInternal.TestSlot s = RlInternal.current();
+        if (s != null && wasRetried(tr)) s.retried = true;
+        RlInternal.end(tr.getThrowable(), false);
+    }
+
+    /** TestNG reports a failed attempt that an IRetryAnalyzer will retry as
+     *  SKIPPED with wasRetried() == true. That is not a skip: it is attempt
+     *  N of a test whose next attempt is about to run. Record it as a failed
+     *  attempt so the report can group the attempts and mark the test flaky. */
+    private static boolean endRetriedAttempt(ITestResult tr) {
+        RlInternal.TestSlot s = RlInternal.current();
+        if (s == null || !wasRetried(tr)) return false;
+        s.retried = true;
+        RlInternal.end(tr.getThrowable() != null ? tr.getThrowable() : new AssertionError("retried"), false);
+        return true;
+    }
+
+    /** ITestResult.wasRetried() exists since TestNG 7.0; older versions just
+     *  never group attempts. */
+    private static boolean wasRetried(ITestResult tr) {
+        try { return tr.wasRetried(); } catch (Throwable t) { return false; }
+    }
+    @Override public void onTestSkipped(ITestResult tr) {
+        PRESTARTED.remove();
+        if (endRetriedAttempt(tr)) return;
+        RlInternal.end(tr.getThrowable(), true);
+    }
     @Override public void onTestFailedButWithinSuccessPercentage(ITestResult tr) { RlInternal.end(tr.getThrowable(), false); }
 
     // ---- helpers ----

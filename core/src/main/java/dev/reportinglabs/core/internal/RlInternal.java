@@ -37,6 +37,12 @@ public final class RlInternal {
         final List<Map<String, Object>> dataBlocks = new ArrayList<>();
         final List<Map<String, Object>> apiCalls = new ArrayList<>();
         final List<Map<String, Object>> attachments = new ArrayList<>();
+        /** Step tree: Rl.step() frames, framework hooks, driver actions. */
+        final List<Map<String, Object>> steps = new ArrayList<>();
+        final Deque<Map<String, Object>> openSteps = new ArrayDeque<>();
+        Map<String, Object> beforeHooks, afterHooks;   // "Before Hooks" / "After Hooks" groups
+        final List<String> stdout = new ArrayList<>();
+        final List<String> stderr = new ArrayList<>();
         /** Per-test finish hooks — e.g. RlPlaywright uses this to screenshot on failure. */
         final List<java.util.function.Consumer<Throwable>> onEnd = new ArrayList<>();
         final long startTime;
@@ -45,6 +51,10 @@ public final class RlInternal {
         String errorMessage;
         String errorStack;
         String skipReason;            // SkipException / @Disabled / assumption message
+        /** This failed invocation will be retried (TestNG IRetryAnalyzer):
+         *  it becomes an earlier attempt of the next invocation with the
+         *  same key instead of its own row. */
+        public boolean retried;
 
         /** 'passed' | 'failed' | 'skipped' — final once end() runs; hooks
          *  registered via onEndCurrent() see the final value. */
@@ -68,6 +78,16 @@ public final class RlInternal {
     // CURRENT is already cleared. Remember the slot that just ended on this
     // thread so those late writes still land on the right test.
     private static final ThreadLocal<TestSlot> LAST_ENDED = new ThreadLocal<>();
+    /** Hook steps that started before any test slot existed on this thread
+     *  (@BeforeSuite/@BeforeTest/@BeforeClass, JUnit @BeforeAll) — they
+     *  become the first test's "Before Hooks". */
+    private static final ThreadLocal<List<Map<String, Object>>> PENDING_BEFORE_HOOKS =
+        ThreadLocal.withInitial(ArrayList::new);
+    /** Listeners told about every test end, after the outcome is settled —
+     *  add-ons (RlSelenium) use this for per-test capture without needing a
+     *  per-test attach() call. */
+    private static final List<java.util.function.Consumer<TestSlot>> END_LISTENERS =
+        new java.util.concurrent.CopyOnWriteArrayList<>();
     private static final Map<String, TestSlot> FINISHED = new ConcurrentHashMap<>();
     private static final AtomicInteger IDX = new AtomicInteger();
     private static final java.util.concurrent.atomic.AtomicLong SEQ = new java.util.concurrent.atomic.AtomicLong();
@@ -134,8 +154,166 @@ public final class RlInternal {
         CURRENT.set(slot);
         LAST_ENDED.remove();
         WORKER_THREADS.add(Thread.currentThread().getId());
+        List<Map<String, Object>> pending = PENDING_BEFORE_HOOKS.get();
+        if (!pending.isEmpty()) {
+            List<Map<String, Object>> kids = hookGroup(slot, true);
+            for (Map<String, Object> h : pending) { kids.add(h); bumpGroup(slot.beforeHooks, h); }
+            pending.clear();
+        }
+        slot.stdout.addAll(PENDING_STDOUT.get()); PENDING_STDOUT.get().clear();
+        slot.stderr.addAll(PENDING_STDERR.get()); PENDING_STDERR.get().clear();
         return slot;
     }
+
+    public static void addEndListener(java.util.function.Consumer<TestSlot> l) {
+        if (l != null) END_LISTENERS.add(l);
+    }
+
+    // ---- steps & hooks ----
+
+    /** An open step frame. Holds the mutable map that is already linked into
+     *  the tree, so ending it in place is enough. */
+    public static final class Step {
+        final Map<String, Object> data;
+        final long start = System.currentTimeMillis();
+        Step(Map<String, Object> data) { this.data = data; }
+    }
+
+    private static Map<String, Object> newStep(String title, String category) {
+        Map<String, Object> s = new LinkedHashMap<>();
+        s.put("title", title == null ? "" : title);
+        s.put("category", category == null ? "test.step" : category);
+        s.put("duration", 0L);
+        s.put("steps", new ArrayList<Map<String, Object>>());
+        return s;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> children(Map<String, Object> step) {
+        return (List<Map<String, Object>>) step.get("steps");
+    }
+
+    /** Opens a step on the running (or just-ended) test, nested under any
+     *  step that is still open. Outside a test the frame is timed but not
+     *  recorded. */
+    public static Step stepBegin(String title, String category) {
+        Map<String, Object> m = newStep(title, category);
+        TestSlot s = currentOrLast();
+        Map<String, Object> hook = OPEN_HOOK.get();
+        if (s != null) {
+            Map<String, Object> parent = s.openSteps.peek();
+            // Inside a hook (@BeforeMethod driver.get(...)) the action belongs
+            // under that hook, not at the test's top level.
+            List<Map<String, Object>> into = parent != null ? children(parent)
+                : hook != null ? children(hook) : s.steps;
+            into.add(m);
+            s.openSteps.push(m);
+        } else if (hook != null) {
+            // @BeforeClass / @BeforeTest actions, before any test is open:
+            // they ride along with the pending hook into the first test.
+            children(hook).add(m);
+        }
+        return new Step(m);
+    }
+
+    /** The framework hook running on this thread, if any. */
+    private static final ThreadLocal<Map<String, Object>> OPEN_HOOK = new ThreadLocal<>();
+
+    public static void stepEnd(Step step, Throwable error) {
+        if (step == null) return;
+        step.data.put("duration", Math.max(0, System.currentTimeMillis() - step.start));
+        if (error != null) step.data.put("error", errorSummary(error));
+        TestSlot s = currentOrLast();
+        if (s != null && s.openSteps.peek() == step.data) s.openSteps.pop();
+    }
+
+    /** Opens a framework hook step (@BeforeMethod, @AfterEach, …). Before-
+     *  hooks go to the running test's "Before Hooks" group, or wait for the
+     *  next test when none is open yet; after-hooks go to the test that just
+     *  ended. */
+    public static Step hookBegin(boolean before, String title) {
+        Map<String, Object> m = newStep(title, "hook");
+        TestSlot s = CURRENT.get();
+        if (before) {
+            if (s != null) hookGroup(s, true).add(m); else PENDING_BEFORE_HOOKS.get().add(m);
+        } else {
+            TestSlot target = s != null ? s : LAST_ENDED.get();
+            if (target != null) hookGroup(target, false).add(m);
+        }
+        OPEN_HOOK.set(m);
+        OPEN_HOOK_BEFORE.set(before);
+        return new Step(m);
+    }
+
+    public static void hookEnd(Step step, Throwable error) {
+        if (step == null) return;
+        if (OPEN_HOOK.get() == step.data) OPEN_HOOK.remove();
+        long d = Math.max(0, System.currentTimeMillis() - step.start);
+        step.data.put("duration", d);
+        if (error != null) step.data.put("error", errorSummary(error));
+        TestSlot s = currentOrLast();
+        if (s != null) {
+            if (s.beforeHooks != null && children(s.beforeHooks).contains(step.data)) bumpGroup(s.beforeHooks, step.data);
+            if (s.afterHooks  != null && children(s.afterHooks).contains(step.data))  bumpGroup(s.afterHooks,  step.data);
+        }
+    }
+
+    private static List<Map<String, Object>> hookGroup(TestSlot s, boolean before) {
+        if (before) {
+            if (s.beforeHooks == null) { s.beforeHooks = newStep("Before Hooks", "hook"); s.steps.add(0, s.beforeHooks); }
+            return children(s.beforeHooks);
+        }
+        if (s.afterHooks == null) { s.afterHooks = newStep("After Hooks", "hook"); s.steps.add(s.afterHooks); }
+        return children(s.afterHooks);
+    }
+
+    private static void bumpGroup(Map<String, Object> group, Map<String, Object> child) {
+        long g = ((Number) group.get("duration")).longValue();
+        group.put("duration", g + ((Number) child.get("duration")).longValue());
+        if (child.get("error") != null && group.get("error") == null) group.put("error", child.get("error"));
+    }
+
+    private static String errorSummary(Throwable t) {
+        String msg = t.getMessage();
+        String head = t.getClass().getSimpleName() + (msg == null ? "" : ": " + firstLine(msg, 300));
+        return head;
+    }
+
+    static String firstLine(String s, int max) {
+        if (s == null) return null;
+        int nl = s.indexOf('\n');
+        String line = nl >= 0 ? s.substring(0, nl) : s;
+        line = line.trim();
+        return line.length() > max ? line.substring(0, max) + "…" : line;
+    }
+
+    // ---- console capture ----
+
+    private static final int MAX_CONSOLE_LINES = 500;
+
+    /** A line printed to System.out / System.err while a test is running (or
+     *  just ended on this thread). Called by ConsoleCapture. */
+    public static void console(boolean err, String line) {
+        if (line == null || line.startsWith("[reporting-labs]")) return;
+        // The template joins chunks with '' and splits on '\n' (Node stores
+        // raw console chunks), so each stored line keeps its newline.
+        String text = (line.length() > 2000 ? line.substring(0, 2000) + "…" : line) + "\n";
+        TestSlot s = CURRENT.get();
+        if (s == null && OPEN_HOOK.get() != null && OPEN_HOOK_BEFORE.get()) {
+            // Printed from a @BeforeClass/@BeforeTest that precedes the next
+            // test: it belongs to that test, not to the one that just ended.
+            (err ? PENDING_STDERR : PENDING_STDOUT).get().add(text);
+            return;
+        }
+        if (s == null) s = LAST_ENDED.get();
+        if (s == null) return;
+        List<String> target = err ? s.stderr : s.stdout;
+        if (target.size() < MAX_CONSOLE_LINES) target.add(text);
+    }
+
+    private static final ThreadLocal<Boolean> OPEN_HOOK_BEFORE = ThreadLocal.withInitial(() -> false);
+    private static final ThreadLocal<List<String>> PENDING_STDOUT = ThreadLocal.withInitial(ArrayList::new);
+    private static final ThreadLocal<List<String>> PENDING_STDERR = ThreadLocal.withInitial(ArrayList::new);
 
     /** Register a callback invoked exactly once when the current test ends.
      *  Used by add-on modules (RlPlaywright) to attach a screenshot or a
@@ -155,8 +333,14 @@ public final class RlInternal {
     public static void end(Throwable failure, boolean skipped, String skipReason) {
         TestSlot slot = CURRENT.get();
         if (slot == null) return;
-        if (skipped && skipReason != null && !skipReason.isEmpty()) slot.skipReason = skipReason;
+        if (skipped && skipReason != null && !skipReason.isEmpty()) slot.skipReason = firstLine(skipReason, 200);
         slot.duration = Math.max(0, System.currentTimeMillis() - slot.startTime);
+        // Close any step the test left open (an exception inside Rl.step()
+        // is ended by Rl itself; this covers hooks that never returned).
+        while (!slot.openSteps.isEmpty()) {
+            Map<String, Object> open = slot.openSteps.pop();
+            if (((Number) open.get("duration")).longValue() == 0) open.put("duration", slot.duration);
+        }
         // Outcome is settled before the onEnd hooks run so they can read it
         // (a skipped test gets no screenshot/trace, whatever the policy).
         // A skip's throwable (SkipException) is a reason, not a failure —
@@ -181,6 +365,9 @@ public final class RlInternal {
         Throwable forHooks = skipped ? null : failure;
         for (java.util.function.Consumer<Throwable> cb : slot.onEnd) {
             try { cb.accept(forHooks); } catch (Throwable ignore) {}
+        }
+        for (java.util.function.Consumer<TestSlot> l : END_LISTENERS) {
+            try { l.accept(slot); } catch (Throwable ignore) {}
         }
         // Unique id per invocation — every begin() call becomes its own row,
         // which is what data-driven tests and retries need. If a real flaky

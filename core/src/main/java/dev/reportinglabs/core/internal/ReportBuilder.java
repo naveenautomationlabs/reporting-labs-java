@@ -42,12 +42,37 @@ public final class ReportBuilder {
         Integer wOverride = Config.workersOverride();
         data.put("workers",     wOverride != null ? wOverride : RlInternal.workerThreadCount());
 
-        List<Map<String, Object>> testList = new ArrayList<>(tests.size());
+        // Run order: FINISHED is a concurrent map, so sort by start time —
+        // the overview strip and retry grouping both depend on it.
+        List<RlInternal.TestSlot> ordered = new ArrayList<>(tests);
+        ordered.sort(Comparator.comparingLong((RlInternal.TestSlot t) -> t.startTime));
+
+        // A retried invocation (TestNG IRetryAnalyzer) becomes an earlier
+        // attempt of the next invocation with the same key; a test whose last
+        // attempt passed after a failure is flaky — same as the Node reporter.
+        List<Map<String, Object>> testList = new ArrayList<>(ordered.size());
+        Map<String, Map<String, Object>> openRetries = new HashMap<>();
         int i = 0;
+        for (RlInternal.TestSlot t : ordered) {
+            Map<String, Object> result = toResult(t);
+            Map<String, Object> test = openRetries.remove(t.key);
+            if (test == null) {
+                test = toTestMap(t, i++, result);
+                testList.add(test);
+            } else {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> results = (List<Map<String, Object>>) test.get("results");
+                result.put("retry", results.size());
+                results.add(result);
+                test.put("duration", ((Number) test.get("duration")).longValue() + t.duration);
+                boolean earlierFailed = results.stream().limit(results.size() - 1).anyMatch(r -> "failed".equals(r.get("status")));
+                test.put("outcome", "passed".equals(t.outcome) && earlierFailed ? "flaky" : t.outcome);
+            }
+            if (t.retried) openRetries.put(t.key, test);
+        }
         int passed = 0, failed = 0, flaky = 0, skipped = 0;
-        for (RlInternal.TestSlot t : tests) {
-            testList.add(toTestMap(t, i++));
-            switch (t.outcome) {
+        for (Map<String, Object> test : testList) {
+            switch (String.valueOf(test.get("outcome"))) {
                 case "passed":  passed++;  break;
                 case "failed":  failed++;  break;
                 case "flaky":   flaky++;   break;
@@ -56,7 +81,7 @@ public final class ReportBuilder {
             }
         }
         Map<String, Object> stats = new LinkedHashMap<>();
-        stats.put("total",       tests.size());
+        stats.put("total",       testList.size());
         stats.put("passed",      passed);
         stats.put("failed",      failed);
         stats.put("flaky",       flaky);
@@ -99,7 +124,7 @@ public final class ReportBuilder {
         return data;
     }
 
-    private static Map<String, Object> toTestMap(RlInternal.TestSlot t, int idx) {
+    private static Map<String, Object> toTestMap(RlInternal.TestSlot t, int idx, Map<String, Object> firstResult) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", "t" + idx);
         m.put("key", t.key);
@@ -120,7 +145,13 @@ public final class ReportBuilder {
         m.put("meta", t.meta);
         m.put("outcome", t.outcome);
         m.put("duration", t.duration);
+        List<Map<String, Object>> results = new ArrayList<>();
+        results.add(firstResult);
+        m.put("results", results);
+        return m;
+    }
 
+    private static Map<String, Object> toResult(RlInternal.TestSlot t) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("logs", t.logs);
         result.put("data", t.dataBlocks);
@@ -138,12 +169,11 @@ public final class ReportBuilder {
             errors.add(e);
         }
         result.put("errors", errors);
-        result.put("steps", Collections.emptyList());
+        result.put("steps", t.steps);
         result.put("attachments", t.attachments);
-        result.put("stdout", Collections.emptyList());
-        result.put("stderr", Collections.emptyList());
-        m.put("results", Collections.singletonList(result));
-        return m;
+        result.put("stdout", t.stdout);
+        result.put("stderr", t.stderr);
+        return result;
     }
 
     private static List<Map<String, Object>> envRows() {

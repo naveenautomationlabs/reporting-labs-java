@@ -150,6 +150,9 @@ public final class Config {
      *  capture; also readable via {@link dev.reportinglabs.core.Rl#screenshotMode()}
      *  so Selenium / plain-Java tests can honour the same setting from an
      *  @AfterMethod hook. */
+    /** Copy System.out / System.err lines into each test's Console output. */
+    public static boolean captureStdout() { return getBool("captureStdout", true); }
+
     public static String screenshot()   { return normalize(get("screenshot", "on-failure")); }
 
     /** Trace-capture policy for Playwright. Same values as `screenshot`

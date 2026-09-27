@@ -53,6 +53,7 @@
     <module>junit5</module>
     <module>testng</module>
     <module>playwright</module>
+    <module>selenium</module>
   </modules>
 
   <properties>
@@ -64,6 +65,7 @@
     <junit.jupiter.version>5.10.2</junit.jupiter.version>
     <testng.version>7.10.2</testng.version>
     <playwright.version>1.47.0</playwright.version>
+    <selenium.version>4.20.0</selenium.version>
   </properties>
 
   <dependencyManagement>
@@ -92,6 +94,11 @@
         <groupId>com.microsoft.playwright</groupId>
         <artifactId>playwright</artifactId>
         <version>${playwright.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.seleniumhq.selenium</groupId>
+        <artifactId>selenium-java</artifactId>
+        <version>${selenium.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>
