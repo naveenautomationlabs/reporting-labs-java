@@ -37,12 +37,23 @@ public final class RlInternal {
         final List<Map<String, Object>> dataBlocks = new ArrayList<>();
         final List<Map<String, Object>> apiCalls = new ArrayList<>();
         final List<Map<String, Object>> attachments = new ArrayList<>();
+        /** Attachments an integration added on its own (auto screenshot). A
+         *  later user attachment with the same name replaces it instead of
+         *  showing up as a twin. */
+        final Set<Map<String, Object>> autoAttachments = Collections.newSetFromMap(new IdentityHashMap<>());
         /** Step tree: Rl.step() frames, framework hooks, driver actions. */
         final List<Map<String, Object>> steps = new ArrayList<>();
         final Deque<Map<String, Object>> openSteps = new ArrayDeque<>();
         Map<String, Object> beforeHooks, afterHooks;   // "Before Hooks" / "After Hooks" groups
         final List<String> stdout = new ArrayList<>();
         final List<String> stderr = new ArrayList<>();
+
+        /** True when an attachment with this name was already added to the
+         *  test — lets integrations skip a screenshot the user took themselves. */
+        public boolean hasAttachment(String name) {
+            for (Map<String, Object> a : attachments) if (name != null && name.equals(a.get("name"))) return true;
+            return false;
+        }
         /** Per-test finish hooks — e.g. RlPlaywright uses this to screenshot on failure. */
         final List<java.util.function.Consumer<Throwable>> onEnd = new ArrayList<>();
         final long startTime;
@@ -167,6 +178,40 @@ public final class RlInternal {
 
     public static void addEndListener(java.util.function.Consumer<TestSlot> l) {
         if (l != null) END_LISTENERS.add(l);
+    }
+
+    // ---- add-on integrations (ServiceLoader) ----
+
+    private static final List<dev.reportinglabs.core.spi.RlIntegration> INTEGRATIONS =
+        new java.util.concurrent.CopyOnWriteArrayList<>();
+    private static volatile boolean integrationsLoaded = false;
+
+    /** Loads every add-on on the classpath once. Called by ShutdownWriter
+     *  when the first framework binding initialises. */
+    public static void loadIntegrations() {
+        if (integrationsLoaded) return;
+        synchronized (RlInternal.class) {
+            if (integrationsLoaded) return;
+            integrationsLoaded = true;
+            try {
+                ClassLoader cl = dev.reportinglabs.core.spi.RlIntegration.class.getClassLoader();
+                for (dev.reportinglabs.core.spi.RlIntegration i :
+                        ServiceLoader.load(dev.reportinglabs.core.spi.RlIntegration.class, cl)) {
+                    INTEGRATIONS.add(i);
+                    END_LISTENERS.add(slot -> i.onTestEnd());
+                }
+            } catch (Throwable ignore) { /* an add-on that fails to load is simply absent */ }
+        }
+    }
+
+    /** Called by the framework bindings with the test class instance — on
+     *  test start and after every lifecycle method — so add-ons can find
+     *  what the setup created (e.g. a WebDriver field). */
+    public static void testInstance(Object instance) {
+        if (instance == null || INTEGRATIONS.isEmpty()) return;
+        for (dev.reportinglabs.core.spi.RlIntegration i : INTEGRATIONS) {
+            try { i.onTestInstance(instance); } catch (Throwable ignore) {}
+        }
     }
 
     // ---- steps & hooks ----
@@ -442,6 +487,19 @@ public final class RlInternal {
      *  attachments are inlined as data URIs at write time; larger ones can
      *  be written as sibling files in a future revision. */
     public static void attach(String name, String contentType, byte[] bytes) {
+        attach(name, contentType, bytes, false);
+    }
+
+    /** Like {@link #attach} but marks the attachment as integration-made:
+     *  a user attachment with the same name replaces it. If the user already
+     *  attached one with that name, this is a no-op. */
+    public static void attachAuto(String name, String contentType, byte[] bytes) {
+        TestSlot s = currentOrLast();
+        if (s != null && s.hasAttachment(name)) return;
+        attach(name, contentType, bytes, true);
+    }
+
+    private static void attach(String name, String contentType, byte[] bytes, boolean auto) {
         TestSlot s = currentOrLast();
         if (s == null) return;
         Map<String, Object> a = new LinkedHashMap<>();
@@ -451,6 +509,19 @@ public final class RlInternal {
         if (bytes != null && bytes.length > 0) {
             // Small enough to inline as data URI; the JS side of the template does the same.
             a.put("src", "data:" + a.get("contentType") + ";base64," + Base64.getEncoder().encodeToString(bytes));
+        }
+        if (auto) {
+            s.attachments.add(a);
+            s.autoAttachments.add(a);
+            return;
+        }
+        for (int i = 0; i < s.attachments.size(); i++) {
+            Map<String, Object> old = s.attachments.get(i);
+            if (s.autoAttachments.contains(old) && a.get("name").equals(old.get("name"))) {
+                s.attachments.set(i, a);          // user's own screenshot wins
+                s.autoAttachments.remove(old);
+                return;
+            }
         }
         s.attachments.add(a);
     }

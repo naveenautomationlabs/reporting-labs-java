@@ -149,7 +149,7 @@ Full reference at [reportinglabs.dev](https://reportinglabs.dev/reference/option
 reportingLabs sits on the framework's `@Test` lifecycle — it does not care what happens inside the test body. Same package works for:
 
 - Playwright for Java (auto-capture with `reporting-labs-playwright`)
-- Selenium Java (`Rl.attach("screenshot.png", "image/png", ((TakesScreenshot) driver).getScreenshotAs(OutputType.BYTES))`)
+- Selenium Java: add `reporting-labs-selenium` and your existing `BaseTest` / `DriverFactory` / page objects are found automatically — steps per action, screenshots per policy
 - REST Assured (`Rl.api("POST", "/v1/orders", 201)`)
 - Karate, Cucumber (both run under JUnit 5 or TestNG)
 - Plain code, HttpClient, JDBC, whatever

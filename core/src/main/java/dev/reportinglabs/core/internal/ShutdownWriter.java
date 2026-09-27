@@ -26,6 +26,7 @@ public final class ShutdownWriter {
         if (!INSTALLED.compareAndSet(false, true)) return;
 
         if (Config.captureStdout()) ConsoleCapture.install();
+        RlInternal.loadIntegrations();
 
         // Pre-load the template while the framework's classloader is alive.
         try { TemplateRenderer.warmCache(); }

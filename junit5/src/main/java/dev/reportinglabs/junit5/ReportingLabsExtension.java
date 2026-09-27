@@ -42,6 +42,8 @@ public class ReportingLabsExtension
         closeHook(null);
         // Registered without beforeEach having fired (unusual), or no test open.
         if (RlInternal.current() == null) begin(ctx);
+        // @BeforeEach has run — whatever it created (a WebDriver) is discoverable.
+        ctx.getTestInstance().ifPresent(RlInternal::testInstance);
     }
 
     @Override

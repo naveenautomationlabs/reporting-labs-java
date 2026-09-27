@@ -153,6 +153,10 @@ public final class Config {
     /** Copy System.out / System.err lines into each test's Console output. */
     public static boolean captureStdout() { return getBool("captureStdout", true); }
 
+    /** Selenium add-on: find the WebDriver in the test instance and wire it
+     *  automatically (no RlSelenium.attach() call needed). */
+    public static boolean seleniumAutoAttach() { return getBool("selenium.autoAttach", true); }
+
     public static String screenshot()   { return normalize(get("screenshot", "on-failure")); }
 
     /** Trace-capture policy for Playwright. Same values as `screenshot`

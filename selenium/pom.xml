@@ -7,12 +7,12 @@
   <parent>
     <groupId>dev.reportinglabs</groupId>
     <artifactId>reporting-labs-parent</artifactId>
-    <version>0.1.9</version>
+    <version>0.1.10</version>
   </parent>
 
   <artifactId>reporting-labs-selenium</artifactId>
   <name>reportingLabs (Selenium)</name>
-  <description>One-line Selenium integration for reportingLabs — RlSelenium.attach(driver) records every navigation, click and keystroke as a step and screenshots per the capture policy.</description>
+  <description>Zero-code Selenium integration for reportingLabs — add the dependency and the WebDriver on your test instance is found automatically; every navigation, click and keystroke becomes a step and screenshots follow the capture policy.</description>
   <url>https://reportinglabs.dev</url>
 
   <dependencies>

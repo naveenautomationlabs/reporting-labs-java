@@ -14,6 +14,7 @@ import org.openqa.selenium.support.events.WebDriverListener;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayDeque;
+import java.util.Collections;
 import java.util.Deque;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -44,20 +45,42 @@ public final class RlSelenium {
     private static final ThreadLocal<Deque<Object>> OPEN = ThreadLocal.withInitial(ArrayDeque::new);
     private static final Object NONE = new Object();
     private static volatile boolean endListenerInstalled = false;
+    private static volatile boolean warnedNoDriver = false;
     private static final Pattern DESC = Pattern.compile("-> (.*)\\]$");
     private static final Pattern SENSITIVE = Pattern.compile("pass|pwd|secret|token|otp|pin|cvv|card", Pattern.CASE_INSENSITIVE);
 
     private RlSelenium() {}
 
-    /** Wraps the driver. Idempotent for an already-wrapped driver. */
+    /** raw driver -> its wrapper, and wrapper -> itself (identity keys). */
+    private static final java.util.Map<WebDriver, WebDriver> WRAPPERS =
+        Collections.synchronizedMap(new java.util.WeakHashMap<>());
+
+    /** Wraps the driver. Idempotent: the same raw driver always yields the
+     *  same wrapper, and passing a wrapper returns it unchanged. With
+     *  reporting-labs-selenium on the classpath this happens automatically
+     *  for any WebDriver the test instance holds; call it yourself only to
+     *  wrap a driver the auto-discovery can't see. */
     @SuppressWarnings("unchecked")
     public static <T extends WebDriver> T attach(T driver) {
         if (driver == null) return null;
         installEndListener();
+        WebDriver known = WRAPPERS.get(driver);
+        if (known != null) { ACTIVE.set(rawOf(known)); return (T) known; }
         ACTIVE.set(driver);
-        if (java.lang.reflect.Proxy.isProxyClass(driver.getClass())) return driver;
         EventFiringDecorator<T> decorator = new EventFiringDecorator<T>(new Listener());
-        return decorator.decorate(driver);
+        T wrapped = decorator.decorate(driver);
+        WRAPPERS.put(driver, wrapped);
+        WRAPPERS.put(wrapped, wrapped);
+        RAW.put(wrapped, driver);
+        return wrapped;
+    }
+
+    private static final java.util.Map<WebDriver, WebDriver> RAW =
+        Collections.synchronizedMap(new java.util.WeakHashMap<>());
+
+    private static WebDriver rawOf(WebDriver wrapper) {
+        WebDriver raw = RAW.get(wrapper);
+        return raw != null ? raw : wrapper;
     }
 
     /** The raw (undecorated) driver attached on this thread, or null. */
@@ -67,10 +90,29 @@ public final class RlSelenium {
      *  current (or just-finished) test. Safe to call yourself. */
     public static void screenshot(String name) {
         WebDriver d = ACTIVE.get();
-        if (d == null) return;
+        if (d == null) {
+            if (!warnedNoDriver) {
+                warnedNoDriver = true;
+                System.err.println("[reporting-labs] RlSelenium.screenshot(\"" + name + "\") was called but no WebDriver is attached on this thread. "
+                    + "Auto-discovery finds drivers held in fields of the test class, its base classes, page objects or a ThreadLocal; "
+                    + "for a driver kept elsewhere call RlSelenium.attach(driver) once after creating it.");
+            }
+            return;
+        }
         try {
             byte[] png = ((TakesScreenshot) d).getScreenshotAs(OutputType.BYTES);
             Rl.attach(name, "image/png", png);
+        } catch (Throwable ignore) { /* session already gone */ }
+    }
+
+    /** Screenshot taken by the integration itself: yields to a user
+     *  attachment of the same name (before or after). */
+    static void autoScreenshot(String name) {
+        WebDriver d = ACTIVE.get();
+        if (d == null) return;
+        try {
+            byte[] png = ((TakesScreenshot) d).getScreenshotAs(OutputType.BYTES);
+            RlInternal.attachAuto(name, "image/png", png);
         } catch (Throwable ignore) { /* session already gone */ }
     }
 
@@ -79,9 +121,11 @@ public final class RlSelenium {
         synchronized (RlSelenium.class) {
             if (endListenerInstalled) return;
             endListenerInstalled = true;
+            // The ServiceLoader integration already screenshots at test end
+            // when it is loaded; this covers manual attach() without it.
             RlInternal.addEndListener(slot -> {
-                if (ACTIVE.get() == null) return;
-                if (Rl.shouldCaptureScreenshot()) screenshot("screen.png");
+                if (ACTIVE.get() == null || SeleniumIntegration.loaded) return;
+                if (Rl.shouldCaptureScreenshot()) autoScreenshot("screen.png");
             });
         }
     }

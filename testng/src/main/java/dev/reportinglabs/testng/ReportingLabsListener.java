@@ -44,6 +44,8 @@ public class ReportingLabsListener implements ITestListener, IConfigurationListe
         RlInternal.Step s = HOOK.get();
         HOOK.remove();
         if (s != null) RlInternal.hookEnd(s, tr.getThrowable());
+        // A @Before* just ran — the driver it created is now discoverable.
+        RlInternal.testInstance(tr.getInstance());
     }
 
     private static String hookTitle(ITestNGMethod tm) {
@@ -73,6 +75,7 @@ public class ReportingLabsListener implements ITestListener, IConfigurationListe
         if (!reuse) begin(tm);
         for (String g : tm.getGroups()) RlInternal.tag(g);
         captureParameters(tr);
+        RlInternal.testInstance(tr.getInstance());
     }
 
     private static void begin(ITestNGMethod tm) {
