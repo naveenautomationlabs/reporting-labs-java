@@ -58,6 +58,11 @@ public final class RlInternal {
     }
 
     private static final ThreadLocal<TestSlot> CURRENT = new ThreadLocal<>();
+    // Frameworks fire their "test finished" listener BEFORE @AfterMethod /
+    // @AfterEach run, so a screenshot attached from an after-hook arrives once
+    // CURRENT is already cleared. Remember the slot that just ended on this
+    // thread so those late writes still land on the right test.
+    private static final ThreadLocal<TestSlot> LAST_ENDED = new ThreadLocal<>();
     private static final Map<String, TestSlot> FINISHED = new ConcurrentHashMap<>();
     private static final AtomicInteger IDX = new AtomicInteger();
     private static final java.util.concurrent.atomic.AtomicLong SEQ = new java.util.concurrent.atomic.AtomicLong();
@@ -74,6 +79,21 @@ public final class RlInternal {
 
     public static TestSlot current() { return CURRENT.get(); }
     public static Masker masker()    { return MASKER; }
+
+    /** The running test, or — from an after-hook — the test that just ended
+     *  on this thread. Null only when no test has run on this thread yet or
+     *  the next one has already begun. */
+    public static TestSlot currentOrLast() {
+        TestSlot s = CURRENT.get();
+        return s != null ? s : LAST_ENDED.get();
+    }
+
+    /** True when the current-or-last test on this thread ended as failed.
+     *  Backs the no-arg Rl.shouldCapture*() helpers used from after-hooks. */
+    public static boolean currentOrLastFailed() {
+        TestSlot s = currentOrLast();
+        return s != null && "failed".equals(s.outcome);
+    }
 
     /** True if any test in this run finished as failed. Used by the
      *  auto-open logic to decide whether to open the report on `on-failure`. */
@@ -100,6 +120,7 @@ public final class RlInternal {
         String id  = key + "#" + SEQ.incrementAndGet();
         TestSlot slot = new TestSlot(id, key, title, file, line, projectName, path);
         CURRENT.set(slot);
+        LAST_ENDED.remove();
         WORKER_THREADS.add(Thread.currentThread().getId());
         return slot;
     }
@@ -146,16 +167,17 @@ public final class RlInternal {
         // top of the raw invocations, not here.
         FINISHED.put(slot.id, slot);
         CURRENT.remove();
+        LAST_ENDED.set(slot);
     }
 
     /** Called from Rl.meta at runtime. */
     public static void meta(String key, String value) {
-        TestSlot s = CURRENT.get();
+        TestSlot s = currentOrLast();
         if (s != null && key != null) s.meta.put(key, value == null ? "" : value);
     }
 
     public static void log(String message) {
-        TestSlot s = CURRENT.get();
+        TestSlot s = currentOrLast();
         if (s == null) return;
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("t", System.currentTimeMillis());
@@ -165,7 +187,7 @@ public final class RlInternal {
 
     /** Adds a pinned key-value block. Nested maps are recursively masked. */
     public static void testData(String name, Object value) {
-        TestSlot s = CURRENT.get();
+        TestSlot s = currentOrLast();
         if (s == null) return;
         Object masked = MASKER.apply(value);
         Map<String, Object> block = new LinkedHashMap<>();
@@ -194,7 +216,7 @@ public final class RlInternal {
     public static void api(String method, String url, int status, long durationMs,
                            Map<String, String> reqHeaders, String reqBody,
                            Map<String, String> respHeaders, String respBody) {
-        TestSlot s = CURRENT.get();
+        TestSlot s = currentOrLast();
         if (s == null) return;
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("method", method == null ? "GET" : method.toUpperCase(Locale.ROOT));
@@ -212,7 +234,7 @@ public final class RlInternal {
      *  attachments are inlined as data URIs at write time; larger ones can
      *  be written as sibling files in a future revision. */
     public static void attach(String name, String contentType, byte[] bytes) {
-        TestSlot s = CURRENT.get();
+        TestSlot s = currentOrLast();
         if (s == null) return;
         Map<String, Object> a = new LinkedHashMap<>();
         a.put("name", name == null ? "attachment" : name);

@@ -77,17 +77,31 @@ public final class Rl {
     /** Same shape as {@link #screenshotMode()}, default `never`. */
     public static String videoMode()      { return Config.video(); }
 
-    /** True when the current mode says to capture given the outcome. Example:
+    /** True when the current mode says to capture, using the outcome of the
+     *  test that is running or — from an @AfterMethod / @AfterEach — the one
+     *  that just finished on this thread. Example:
      *  <pre>{@code
-     *  @AfterMethod
-     *  void afterMethod(ITestResult r) {
-     *    boolean failed = r.getStatus() != ITestResult.SUCCESS;
-     *    if (Rl.shouldCaptureScreenshot(failed)) {
-     *      Rl.attach("failure.png", "image/png",
+     *  @AfterMethod(alwaysRun = true)
+     *  void tearDown() {
+     *    if (Rl.shouldCaptureScreenshot()) {
+     *      Rl.attach("screen.png", "image/png",
      *        ((TakesScreenshot) driver).getScreenshotAs(OutputType.BYTES));
      *    }
+     *    driver.quit();
      *  }
      *  }</pre> */
+    public static boolean shouldCaptureScreenshot() {
+        return shouldCaptureScreenshot(RlInternal.currentOrLastFailed());
+    }
+    public static boolean shouldCaptureTrace() {
+        return shouldCaptureTrace(RlInternal.currentOrLastFailed());
+    }
+    public static boolean shouldCaptureVideo() {
+        return shouldCaptureVideo(RlInternal.currentOrLastFailed());
+    }
+
+    /** Same as {@link #shouldCaptureScreenshot()} with an explicit outcome, for
+     *  callers that already hold it (ITestResult, TestWatcher, …). */
     public static boolean shouldCaptureScreenshot(boolean failed) {
         return Config.shouldCapture(Config.screenshot(), failed);
     }
