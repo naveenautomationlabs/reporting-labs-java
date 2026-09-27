@@ -49,11 +49,31 @@ public final class Config {
 
     private static String get(String key, String def) {
         String v = System.getProperty("reporting-labs." + key);
-        if (v != null) return v;
-        v = FILE.getProperty("reporting-labs." + key);
-        if (v != null) return v;
-        v = System.getenv("REPORTING_LABS_" + toEnv(key));
-        return v != null ? v : def;
+        if (v == null) v = FILE.getProperty("reporting-labs." + key);
+        if (v == null) v = System.getenv("REPORTING_LABS_" + toEnv(key));
+        return v != null ? stripInlineComment(key, v) : def;
+    }
+
+    // Keys whose values may legitimately contain '#': colours, CSS, URLs,
+    // free text. Everything else is an enum / boolean / number / list, where
+    // a trailing "  # comment" can only be a comment.
+    private static final String[] FREE_TEXT_PREFIXES = {
+        "title", "accent", "customCss", "outputFolder", "outputFile",
+        "project.", "metadata.", "links.", "env.", "sections.",
+    };
+
+    /** java.util.Properties has no inline comments, so
+     *  {@code screenshot=always   # never | on-failure | always} yields the
+     *  value "always   # never | …". Tolerate that for option-style keys. */
+    static String stripInlineComment(String key, String v) {
+        for (String p : FREE_TEXT_PREFIXES) {
+            if (key.equals(p) || (p.endsWith(".") && key.startsWith(p))) return v;
+        }
+        int i = -1;
+        for (int j = 1; j < v.length(); j++) {
+            if (v.charAt(j) == '#' && Character.isWhitespace(v.charAt(j - 1))) { i = j; break; }
+        }
+        return i < 0 ? v : v.substring(0, i).trim();
     }
 
     private static String toEnv(String key) {
