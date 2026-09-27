@@ -14,36 +14,43 @@ import java.util.*;
  * — enable JUnit's autodetection with
  *   junit.jupiter.extensions.autodetection.enabled=true
  * in junit-platform.properties and it lights up.
+ *
+ * Lifecycle: the slot opens in beforeEach(), which JUnit fires BEFORE the
+ * user's @BeforeEach methods — so RlPlaywright.attach(page) or Rl.log(...)
+ * inside a @BeforeEach already has a current test. It closes in
+ * afterTestExecution() with the test's outcome; afterEach() is a safety net
+ * for tests whose @BeforeEach threw (afterTestExecution never runs then).
  */
 public class ReportingLabsExtension
-    implements BeforeTestExecutionCallback, AfterTestExecutionCallback, TestWatcher {
+    implements BeforeEachCallback, BeforeTestExecutionCallback,
+               AfterTestExecutionCallback, AfterEachCallback, TestWatcher {
 
     static { ShutdownWriter.install(); }
 
     @Override
+    public void beforeEach(ExtensionContext ctx) { begin(ctx); }
+
+    @Override
     public void beforeTestExecution(ExtensionContext ctx) {
-        Method m = ctx.getTestMethod().orElse(null);
-        Class<?> cls = ctx.getTestClass().orElse(null);
-        String title = ctx.getDisplayName();
-        String file = cls != null ? cls.getSimpleName() + ".java" : "unknown";
-        int line = 0;
-        List<String> path = classPath(cls);
-        RlInternal.begin(title, file, line, "junit5", path);
-        applyAnnotations(cls, m);
+        // Registered without beforeEach having fired (unusual), or no test open.
+        if (RlInternal.current() == null) begin(ctx);
     }
 
     @Override
     public void afterTestExecution(ExtensionContext ctx) {
-        Throwable failure = ctx.getExecutionException().orElse(null);
-        RlInternal.end(failure, false);
+        RlInternal.end(ctx.getExecutionException().orElse(null), false);
+    }
+
+    @Override
+    public void afterEach(ExtensionContext ctx) {
+        // Still open here means the test body never ran (@BeforeEach failed).
+        if (RlInternal.current() != null) {
+            RlInternal.end(ctx.getExecutionException().orElse(null), false);
+        }
     }
 
     @Override public void testDisabled(ExtensionContext ctx, Optional<String> reason) {
-        Class<?> cls = ctx.getTestClass().orElse(null);
-        Method m = ctx.getTestMethod().orElse(null);
-        RlInternal.begin(ctx.getDisplayName(), cls != null ? cls.getSimpleName() + ".java" : "unknown",
-                         0, "junit5", classPath(cls));
-        applyAnnotations(cls, m);
+        begin(ctx);
         RlInternal.end(null, true);
     }
 
@@ -52,6 +59,15 @@ public class ReportingLabsExtension
     @Override public void testFailed(ExtensionContext ctx, Throwable cause) { /* handled */ }
 
     // ---- helpers ----
+
+    private static void begin(ExtensionContext ctx) {
+        Method m = ctx.getTestMethod().orElse(null);
+        Class<?> cls = ctx.getTestClass().orElse(null);
+        String file = cls != null ? cls.getSimpleName() + ".java" : "unknown";
+        RlInternal.begin(ctx.getDisplayName(), file, 0, "junit5", classPath(cls));
+        if (cls != null) apply(cls);   // class-level defaults first
+        if (m != null)   apply(m);     // then method-level overrides
+    }
 
     private static List<String> classPath(Class<?> cls) {
         List<String> out = new ArrayList<>();
@@ -63,12 +79,6 @@ public class ReportingLabsExtension
         return out;
     }
 
-    private static void applyAnnotations(Class<?> cls, Method m) {
-        // class-level defaults first, then method-level overrides
-        if (cls != null) apply(cls);
-        if (m != null)   apply(m);
-    }
-
     private static void apply(java.lang.reflect.AnnotatedElement el) {
         Priority p = el.getAnnotation(Priority.class);   if (p != null) RlInternal.meta("priority",  p.value());
         Severity s = el.getAnnotation(Severity.class);   if (s != null) RlInternal.meta("severity",  s.value());
@@ -78,7 +88,7 @@ public class ReportingLabsExtension
         Epic e     = el.getAnnotation(Epic.class);       if (e != null) RlInternal.meta("epic",      e.value());
         Issue i    = el.getAnnotation(Issue.class);      if (i != null) RlInternal.meta("issue",     i.value());
         Component c= el.getAnnotation(Component.class);  if (c != null) RlInternal.meta("component", c.value());
-        Team tm    = el.getAnnotation(Team.class);       if (tm != null) RlInternal.meta("team",     tm.value());
+        Team tm    = el.getAnnotation(Team.class);       if (tm != null) RlInternal.meta("team",      tm.value());
         Meta[] metas = el.getAnnotationsByType(Meta.class);
         for (Meta mt : metas) RlInternal.meta(mt.key(), mt.value());
     }

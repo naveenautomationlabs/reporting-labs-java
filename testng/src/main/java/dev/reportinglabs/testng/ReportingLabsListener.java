@@ -12,21 +12,44 @@ import java.util.*;
  * TestNG listener that wires each test into the reportingLabs collector.
  * Auto-registered via ServiceLoader — no <listeners> block needed in
  * testng.xml. See META-INF/services/org.testng.ITestNGListener.
+ *
+ * Lifecycle: TestNG runs @BeforeMethod BEFORE it fires onTestStart, so the
+ * test slot is opened from beforeConfiguration() — that way anything a
+ * @BeforeMethod does (RlPlaywright.attach(page), Rl.log(...)) already has a
+ * current test to land on. onTestStart then just reuses that slot.
  */
-public class ReportingLabsListener implements ITestListener {
+public class ReportingLabsListener implements ITestListener, IConfigurationListener {
 
     static { ShutdownWriter.install(); }
 
+    /** The test method whose slot was opened early by a @BeforeMethod. */
+    private static final ThreadLocal<ITestNGMethod> PRESTARTED = new ThreadLocal<>();
+
+    @Override
+    public void beforeConfiguration(ITestResult configResult, ITestNGMethod upcomingTest) {
+        if (upcomingTest == null) return;
+        if (!configResult.getMethod().isBeforeMethodConfiguration()) return;
+        if (RlInternal.current() != null && PRESTARTED.get() == upcomingTest) return; // 2nd+ @BeforeMethod
+        begin(upcomingTest);
+        PRESTARTED.set(upcomingTest);
+    }
+
     @Override
     public void onTestStart(ITestResult tr) {
-        Class<?> cls = tr.getTestClass().getRealClass();
-        Method m = tr.getMethod().getConstructorOrMethod().getMethod();
-        String title = displayTitle(tr, m);
-        String file = cls.getSimpleName() + ".java";
-        List<String> path = classPath(cls);
-        RlInternal.begin(title, file, 0, "testng", path);
-        applyAnnotations(cls, m, tr);
+        ITestNGMethod tm = tr.getMethod();
+        boolean reuse = RlInternal.current() != null && PRESTARTED.get() == tm;
+        PRESTARTED.remove();
+        if (!reuse) begin(tm);
+        for (String g : tm.getGroups()) RlInternal.tag(g);
         captureParameters(tr);
+    }
+
+    private static void begin(ITestNGMethod tm) {
+        Class<?> cls = tm.getRealClass();
+        Method m = tm.getConstructorOrMethod().getMethod();
+        RlInternal.begin(displayTitle(tm, m), cls.getSimpleName() + ".java", 0, "testng", classPath(cls));
+        apply(cls);
+        apply(m);
     }
 
     /** Auto-capture data-provider parameters as a pinned data block on the
@@ -50,13 +73,13 @@ public class ReportingLabsListener implements ITestListener {
 
     @Override public void onTestSuccess(ITestResult tr) { RlInternal.end(null, false); }
     @Override public void onTestFailure(ITestResult tr) { RlInternal.end(tr.getThrowable(), false); }
-    @Override public void onTestSkipped(ITestResult tr) { RlInternal.end(null, true); }
+    @Override public void onTestSkipped(ITestResult tr) { PRESTARTED.remove(); RlInternal.end(null, true); }
     @Override public void onTestFailedButWithinSuccessPercentage(ITestResult tr) { RlInternal.end(tr.getThrowable(), false); }
 
     // ---- helpers ----
 
-    private static String displayTitle(ITestResult tr, Method m) {
-        String d = tr.getMethod().getDescription();
+    private static String displayTitle(ITestNGMethod tm, Method m) {
+        String d = tm.getDescription();
         return (d != null && !d.isEmpty()) ? d : m.getName();
     }
 
@@ -68,13 +91,6 @@ public class ReportingLabsListener implements ITestListener {
         return out;
     }
 
-    private static void applyAnnotations(Class<?> cls, Method m, ITestResult tr) {
-        apply(cls);
-        apply(m);
-        // TestNG groups → tags on the current slot
-        for (String g : tr.getMethod().getGroups()) RlInternal.tag(g);
-    }
-
     private static void apply(java.lang.reflect.AnnotatedElement el) {
         Priority p = el.getAnnotation(Priority.class);   if (p != null) RlInternal.meta("priority",  p.value());
         Severity s = el.getAnnotation(Severity.class);   if (s != null) RlInternal.meta("severity",  s.value());
@@ -84,7 +100,7 @@ public class ReportingLabsListener implements ITestListener {
         Epic e     = el.getAnnotation(Epic.class);       if (e != null) RlInternal.meta("epic",      e.value());
         Issue i    = el.getAnnotation(Issue.class);      if (i != null) RlInternal.meta("issue",     i.value());
         Component c= el.getAnnotation(Component.class);  if (c != null) RlInternal.meta("component", c.value());
-        Team tm    = el.getAnnotation(Team.class);       if (tm != null) RlInternal.meta("team",     tm.value());
+        Team tm    = el.getAnnotation(Team.class);       if (tm != null) RlInternal.meta("team",      tm.value());
         Meta[] metas = el.getAnnotationsByType(Meta.class);
         for (Meta mt : metas) RlInternal.meta(mt.key(), mt.value());
     }
