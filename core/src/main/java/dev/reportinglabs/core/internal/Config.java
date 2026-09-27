@@ -304,6 +304,12 @@ public final class Config {
     public static Map<String, List<String>> dimensionOrder() {
         Map<String, String> raw = prefixMap("dimensionOrder.");
         Map<String, List<String>> out = new LinkedHashMap<>();
+        // Same defaults as the JS reporter. The template's ranking code
+        // indexes dimensionOrder.priority / .severity unconditionally, so
+        // these must always be present — a report with two or more failures
+        // renders blank otherwise.
+        out.put("priority", Arrays.asList("P0", "P1", "P2", "P3", "P4"));
+        out.put("severity", Arrays.asList("blocker", "critical", "major", "high", "medium", "normal", "minor", "low", "trivial"));
         for (Map.Entry<String, String> e : raw.entrySet()) {
             List<String> parts = new ArrayList<>();
             for (String p : e.getValue().split(",")) { String t = p.trim(); if (!t.isEmpty()) parts.add(t); }

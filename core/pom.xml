@@ -7,13 +7,21 @@
   <parent>
     <groupId>dev.reportinglabs</groupId>
     <artifactId>reporting-labs-parent</artifactId>
-    <version>0.1.6</version>
+    <version>0.1.7</version>
   </parent>
 
   <artifactId>reporting-labs-core</artifactId>
   <name>reportingLabs (core)</name>
   <description>Core reporting engine, annotations and Rl.* runtime helpers for reportingLabs Java. Framework-agnostic — usable from JUnit 5, TestNG, or plain code.</description>
   <url>https://reportinglabs.dev</url>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
 
   <build>
     <resources>
