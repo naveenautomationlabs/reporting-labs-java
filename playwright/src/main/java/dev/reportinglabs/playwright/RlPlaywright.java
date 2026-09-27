@@ -6,9 +6,11 @@ import dev.reportinglabs.core.Rl;
 import dev.reportinglabs.core.internal.RlInternal;
 
 import java.io.IOException;
+import java.lang.reflect.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 
 /**
  * One-line integration between Playwright for Java and reportingLabs.
@@ -110,6 +112,203 @@ public final class RlPlaywright {
         return context;
     }
 
+    /**
+     * Records every call made through an {@link APIRequestContext} — the
+     * Playwright API-testing client behind {@code page.request()} and
+     * {@code playwright.request().newContext()}. Returns a wrapper; use it
+     * in place of the original:
+     *
+     * <pre>{@code
+     * APIRequestContext api = RlPlaywright.record(page.request());
+     * api.post("/v1/orders", RequestOptions.create().setData(payload));
+     * }</pre>
+     *
+     * Each call lands in the report with method, URL (query params included),
+     * request headers and body, status, timing, response headers and body
+     * (text types only, capped at 200 KB) — the same shape the Node reporter's
+     * {@code import 'reporting-labs/auto'} produces. Outside a test the
+     * wrapper just delegates.
+     */
+    public static APIRequestContext record(APIRequestContext ctx) {
+        if (ctx == null) return null;
+        if (java.lang.reflect.Proxy.isProxyClass(ctx.getClass())) return ctx;   // already wrapped
+        return (APIRequestContext) java.lang.reflect.Proxy.newProxyInstance(
+            APIRequestContext.class.getClassLoader(),
+            new Class<?>[] { APIRequestContext.class },
+            new ApiRecorder(ctx));
+    }
+
+    // ---- APIRequestContext recording ----
+
+    private static final int MAX_BODY = 200 * 1024;
+    private static final Pattern TEXT_TYPES =
+        Pattern.compile("json|text|xml|html|javascript|x-www-form-urlencoded|graphql", Pattern.CASE_INSENSITIVE);
+    private static final Set<String> VERBS = new HashSet<>(Arrays.asList("get", "post", "put", "patch", "delete", "head", "fetch"));
+
+    private static final class ApiRecorder implements InvocationHandler {
+        private final APIRequestContext real;
+        ApiRecorder(APIRequestContext real) { this.real = real; }
+
+        @Override
+        public Object invoke(Object proxy, Method m, Object[] args) throws Throwable {
+            boolean verb = VERBS.contains(m.getName()) && args != null && args.length >= 1
+                && (args[0] instanceof String || args[0] instanceof Request);
+            if (!verb || RlInternal.current() == null) return call(m, args);
+
+            Object target = args[0];
+            RequestOptions opts = args.length > 1 && args[1] instanceof RequestOptions ? (RequestOptions) args[1] : null;
+
+            String method = "fetch".equals(m.getName())
+                ? (target instanceof Request ? ((Request) target).method() : "GET")
+                : m.getName().toUpperCase(Locale.ROOT);
+            String url = target instanceof Request ? ((Request) target).url() : String.valueOf(target);
+            Map<String, String> headers = new LinkedHashMap<>();
+            String body = null;
+            if (target instanceof Request) {
+                headers.putAll(((Request) target).headers());
+                body = ((Request) target).postData();
+            }
+            if (opts != null) {
+                Map<String, Object> o = readOptions(opts);
+                if (o.get("method") != null) method = String.valueOf(o.get("method")).toUpperCase(Locale.ROOT);
+                if (o.get("headers") instanceof Map) {
+                    for (Map.Entry<?, ?> e : ((Map<?, ?>) o.get("headers")).entrySet())
+                        headers.put(String.valueOf(e.getKey()), String.valueOf(e.getValue()));
+                }
+                url = withParams(url, o.get("params"));
+                String described = describeRequestBody(o, headers);
+                if (described != null) body = described;
+            }
+
+            long started = System.currentTimeMillis();
+            APIResponse res = null;
+            Throwable failure = null;
+            try { res = (APIResponse) call(m, args); }
+            catch (Throwable t) { failure = t; }
+            long duration = Math.max(0, System.currentTimeMillis() - started);
+
+            try {
+                if (res != null) {
+                    Rl.api(method, res.url(), res.status(), duration, headers, body, res.headers(), responseBody(res));
+                } else {
+                    Rl.api(method, url, 0, duration, headers, body, Collections.emptyMap(),
+                           "Request failed: " + shortMessage(failure));
+                }
+            } catch (Throwable ignore) { /* recording never fails the test */ }
+
+            if (failure != null) throw failure;
+            return res;
+        }
+
+        private Object call(Method m, Object[] args) throws Throwable {
+            try { return m.invoke(real, args); }
+            catch (InvocationTargetException e) { throw e.getCause(); }
+        }
+    }
+
+    /** PlaywrightException messages are a multi-line "Error { message='…' …}"
+     *  dump; keep just the message line. */
+    private static String shortMessage(Throwable t) {
+        if (t == null || t.getMessage() == null) return "unknown";
+        String msg = t.getMessage();
+        java.util.regex.Matcher m = Pattern.compile("message='([^\\n]*)").matcher(msg);
+        if (m.find()) msg = m.group(1);
+        return msg.trim();
+    }
+
+    /** RequestOptions has no getters; read the impl's fields reflectively.
+     *  Any failure just means less detail — never an error. */
+    private static Map<String, Object> readOptions(RequestOptions opts) {
+        Map<String, Object> out = new HashMap<>();
+        for (String f : new String[] { "method", "headers", "params", "data", "form", "multipart" }) {
+            try {
+                Field fld = opts.getClass().getDeclaredField(f);
+                fld.setAccessible(true);
+                Object v = fld.get(opts);
+                if (v != null) out.put(f, v);
+            } catch (Throwable ignore) {}
+        }
+        return out;
+    }
+
+    private static String withParams(String url, Object params) {
+        if (!(params instanceof Map) || ((Map<?, ?>) params).isEmpty()) return url;
+        StringBuilder q = new StringBuilder();
+        for (Map.Entry<?, ?> e : ((Map<?, ?>) params).entrySet()) {
+            if (q.length() > 0) q.append('&');
+            q.append(enc(String.valueOf(e.getKey()))).append('=').append(enc(String.valueOf(e.getValue())));
+        }
+        return url + (url.contains("?") ? "&" : "?") + q;
+    }
+
+    private static String enc(String s) {
+        try { return java.net.URLEncoder.encode(s, "UTF-8"); } catch (Throwable t) { return s; }
+    }
+
+    private static String describeRequestBody(Map<String, Object> o, Map<String, String> headers) {
+        boolean hasType = headers.keySet().stream().anyMatch(k -> k.equalsIgnoreCase("content-type"));
+        if (o.containsKey("data")) {
+            Object d = o.get("data");
+            if (d instanceof byte[]) return "<binary " + ((byte[]) d).length + " bytes>";
+            if (d instanceof String) return (String) d;
+            if (!hasType) headers.put("content-type", "application/json");
+            return dev.reportinglabs.core.internal.Json.write(d);
+        }
+        if (o.containsKey("form")) {
+            if (!hasType) headers.put("content-type", "application/x-www-form-urlencoded");
+            return formFields(o.get("form"));
+        }
+        if (o.containsKey("multipart")) {
+            if (!hasType) headers.put("content-type", "multipart/form-data");
+            return formFields(o.get("multipart"));
+        }
+        return null;
+    }
+
+    /** FormDataImpl keeps a list of Field{name, value | file}. */
+    private static String formFields(Object formData) {
+        try {
+            Field fl = formData.getClass().getDeclaredField("fields");
+            fl.setAccessible(true);
+            Map<String, Object> out = new LinkedHashMap<>();
+            for (Object f : (List<?>) fl.get(formData)) {
+                String name = null; Object value = null;
+                for (Field ff : f.getClass().getDeclaredFields()) {
+                    ff.setAccessible(true);
+                    Object v = ff.get(f);
+                    if ("name".equals(ff.getName())) name = String.valueOf(v);
+                    else if (v != null && value == null) {
+                        boolean scalar = v instanceof CharSequence || v instanceof Number || v instanceof Boolean;
+                        value = scalar ? String.valueOf(v) : "<file>";
+                    }
+                }
+                if (name != null) out.put(name, value == null ? "" : value);
+            }
+            return dev.reportinglabs.core.internal.Json.write(out);
+        } catch (Throwable t) { return "<form>"; }
+    }
+
+    private static String responseBody(APIResponse res) {
+        return textBody(res.headers(), () -> res.text());
+    }
+
+    /** Text bodies only, capped; binary types become a short placeholder. */
+    private static String textBody(Map<String, String> headers, java.util.function.Supplier<String> text) {
+        String type = "", len = "";
+        for (Map.Entry<String, String> e : headers.entrySet()) {
+            if (e.getKey().equalsIgnoreCase("content-type")) type = e.getValue();
+            if (e.getKey().equalsIgnoreCase("content-length")) len = e.getValue();
+        }
+        if (!type.isEmpty() && !TEXT_TYPES.matcher(type).find()) {
+            return "<" + type.split(";")[0] + (len.isEmpty() ? "" : " " + len + " bytes") + ">";
+        }
+        try {
+            String t = text.get();
+            if (t == null || t.isEmpty()) return null;
+            return t.length() > MAX_BODY ? t.substring(0, MAX_BODY) + "\n… truncated (" + t.length() + " chars)" : t;
+        } catch (Throwable ignore) { return null; }
+    }
+
     /** Takes a full-page screenshot of the current test's most recent page
      *  that is still open and attaches it. Called by the framework binding
      *  when the capture policy says so; safe to call yourself. */
@@ -172,9 +371,17 @@ public final class RlPlaywright {
             try {
                 Response res = req.response();
                 int status = res == null ? 0 : res.status();
+                // Response bodies only for XHR/fetch — an API call's payload is
+                // what a reader wants; documents, scripts and images are noise.
+                String rt = req.resourceType();
+                String respBody = null;
+                if (res != null && ("xhr".equals(rt) || "fetch".equals(rt))) {
+                    final Response r = res;
+                    respBody = textBody(r.headers(), r::text);
+                }
                 Rl.api(req.method(), req.url(), status, dur,
                        toStr(req.headers()), safeBody(req.postData()),
-                       toStr(res == null ? null : res.headers()), null);
+                       toStr(res == null ? null : res.headers()), respBody);
             } catch (Throwable ignore) { /* one bad frame does not fail the test */ }
         }
 
