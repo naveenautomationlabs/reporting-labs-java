@@ -91,13 +91,13 @@ public final class Rl {
      *  }
      *  }</pre> */
     public static boolean shouldCaptureScreenshot() {
-        return shouldCaptureScreenshot(RlInternal.currentOrLastFailed());
+        return !RlInternal.currentOrLastSkipped() && shouldCaptureScreenshot(RlInternal.currentOrLastFailed());
     }
     public static boolean shouldCaptureTrace() {
-        return shouldCaptureTrace(RlInternal.currentOrLastFailed());
+        return !RlInternal.currentOrLastSkipped() && shouldCaptureTrace(RlInternal.currentOrLastFailed());
     }
     public static boolean shouldCaptureVideo() {
-        return shouldCaptureVideo(RlInternal.currentOrLastFailed());
+        return !RlInternal.currentOrLastSkipped() && shouldCaptureVideo(RlInternal.currentOrLastFailed());
     }
 
     /** Same as {@link #shouldCaptureScreenshot()} with an explicit outcome, for

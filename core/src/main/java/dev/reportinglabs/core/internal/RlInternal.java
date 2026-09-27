@@ -100,6 +100,13 @@ public final class RlInternal {
         return s != null && "failed".equals(s.outcome);
     }
 
+    /** True when the current-or-last test on this thread was skipped — a
+     *  skipped test never gets capture artifacts, whatever the policy. */
+    public static boolean currentOrLastSkipped() {
+        TestSlot s = currentOrLast();
+        return s != null && "skipped".equals(s.outcome);
+    }
+
     /** True if any test in this run finished as failed. Used by the
      *  auto-open logic to decide whether to open the report on `on-failure`. */
     public static boolean hasFailures() {
