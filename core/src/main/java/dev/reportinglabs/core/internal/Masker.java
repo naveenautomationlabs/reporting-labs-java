@@ -33,7 +33,9 @@ public final class Masker {
         if (key == null) return false;
         String norm = key.toLowerCase(Locale.ROOT).replace("-", "").replace("_", "");
         if (keys.contains(norm)) return true;
-        return substrings.matcher(key).find();
+        // Match on the normalised form too, so "x-api-key" / "X_Auth_Token"
+        // hit "apikey" / "token" the same way "apiKey" does.
+        return substrings.matcher(norm).find();
     }
 
     /** Walks the value: for a Map, redacts sensitive keys' values; for a

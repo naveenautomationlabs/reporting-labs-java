@@ -25,25 +25,30 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * With that call in place, reportingLabs:
  *   - records every request/response the page makes as an API call in the report,
- *   - remembers the Page so the framework binding can screenshot on failure,
- *   - starts a Playwright trace and attaches it when the test ends,
- *   - screenshots on failure and attaches the PNG.
+ *   - starts a Playwright trace and attaches it when the test ends (per policy),
+ *   - screenshots the page when the test ends (per policy) and attaches the PNG.
  *
  * Nothing else in the test changes — the same page.click(), page.fill(),
  * page.request() calls work. If reportingLabs isn't loaded (or no test is
  * active), attach() is a no-op.
+ *
+ * Capture policy comes from reporting-labs.screenshot / reporting-labs.trace
+ * (never | on-failure | always | only-on-pass).
  */
 public final class RlPlaywright {
 
-    private static final ThreadLocal<Page> CURRENT_PAGE = new ThreadLocal<>();
+    /** Every page attached during the current test, in attach order. */
+    private static final ThreadLocal<List<Page>> TEST_PAGES = ThreadLocal.withInitial(ArrayList::new);
     private static final Map<Page, PageState> STATES = new ConcurrentHashMap<>();
     private static volatile boolean shutdownHooked = false;
 
     private RlPlaywright() {}
 
-    /** Returns the Page attached to this thread, or null. Used by
-     *  framework failure hooks to grab a screenshot. */
-    public static Page currentPage() { return CURRENT_PAGE.get(); }
+    /** The most recently attached page of the current test, or null. */
+    public static Page currentPage() {
+        List<Page> pages = TEST_PAGES.get();
+        return pages.isEmpty() ? null : pages.get(pages.size() - 1);
+    }
 
     /** Attaches the given Page to the current test. Idempotent — calling
      *  twice with the same Page just returns. Safe to call outside a
@@ -51,22 +56,28 @@ public final class RlPlaywright {
     public static Page attach(Page page) {
         if (page == null) return null;
         if (RlInternal.current() == null) return page;  // outside a test — nothing to record against
-        if (STATES.containsKey(page)) { CURRENT_PAGE.set(page); return page; }
+        if (STATES.containsKey(page)) return page;
 
         installShutdownHook();
 
-        // Wire capture hooks into the test's finish. Screenshot and trace
-        // both honour reporting-labs.screenshot / .trace policy — user can
-        // disable either without touching test code.
-        RlInternal.onEndCurrent(failure -> {
-            boolean failed = failure != null;
-            if (Rl.shouldCaptureScreenshot(failed)) screenshotOnFailure();
-            finish(failed);
-        });
+        List<Page> pages = TEST_PAGES.get();
+        if (pages.isEmpty()) {
+            // First page of this test: hook the test's finish exactly once.
+            // Screenshot and trace both honour the capture policy — a user
+            // can disable either without touching test code.
+            RlInternal.onEndCurrent(failure -> {
+                boolean failed = failure != null;
+                RlInternal.TestSlot slot = RlInternal.current();
+                boolean skipped = slot != null && "skipped".equals(slot.outcome());
+                if (skipped) { finish(false, false); return; }   // nothing ran — no artifacts
+                if (Rl.shouldCaptureScreenshot(failed)) screenshotOnFailure();
+                finish(failed);
+            });
+        }
+        pages.add(page);
 
         PageState st = new PageState(page);
         STATES.put(page, st);
-        CURRENT_PAGE.set(page);
 
         // API auto-capture: match request → response by request instance
         page.onRequest(st::onRequest);
@@ -74,8 +85,10 @@ public final class RlPlaywright {
         page.onRequestFailed(st::onRequestFailed);
 
         // Start a trace only if the policy could ever want one (skip when
-        // trace=never, so we don't pay the recording cost). Whether the
-        // trace is actually attached is decided in finish(failed).
+        // trace=never, so we don't pay the recording cost). Tracing is per
+        // BrowserContext: a second page in the same context finds it already
+        // running and simply shares it. Whether the trace is attached is
+        // decided in finish(failed).
         if (!"never".equals(Rl.traceMode())) {
             try {
                 page.context().tracing().start(new Tracing.StartOptions()
@@ -88,7 +101,8 @@ public final class RlPlaywright {
     }
 
     /** Attach every current AND future page of a BrowserContext. Handy for
-     *  multi-tab flows: pages opened later are wired automatically. */
+     *  multi-tab flows: pages opened later (popups, window.open) are wired
+     *  automatically. */
     public static BrowserContext attach(BrowserContext context) {
         if (context == null) return null;
         for (Page p : context.pages()) attach(p);
@@ -96,27 +110,36 @@ public final class RlPlaywright {
         return context;
     }
 
-    /** Called by the framework binding on test failure — takes a
-     *  screenshot from the ThreadLocal page and attaches it. */
+    /** Takes a full-page screenshot of the current test's most recent page
+     *  that is still open and attaches it. Called by the framework binding
+     *  when the capture policy says so; safe to call yourself. */
     public static void screenshotOnFailure() {
-        Page p = CURRENT_PAGE.get();
-        if (p == null || RlInternal.current() == null) return;
-        try {
-            byte[] png = p.screenshot(new Page.ScreenshotOptions().setFullPage(true));
-            Rl.attach("failure.png", "image/png", png);
-        } catch (Throwable ignore) { /* page may be closed already */ }
+        if (RlInternal.currentOrLast() == null) return;
+        List<Page> pages = TEST_PAGES.get();
+        for (int i = pages.size() - 1; i >= 0; i--) {
+            Page p = pages.get(i);
+            try {
+                if (p.isClosed()) continue;
+                byte[] png = p.screenshot(new Page.ScreenshotOptions().setFullPage(true));
+                Rl.attach("failure.png", "image/png", png);
+                return;
+            } catch (Throwable ignore) { /* try an earlier page */ }
+        }
     }
 
-    /** Called by the framework binding on test finish (pass or fail) —
-     *  stops the trace, attaches it only if the policy says so, detaches
-     *  the page. */
+    /** Called when the test finishes (pass or fail) — stops tracing on every
+     *  page of the test, attaches the trace only if the policy says so, and
+     *  detaches the pages. */
     public static void finish() { finish(false); }
-    public static void finish(boolean failed) {
-        Page p = CURRENT_PAGE.get();
-        CURRENT_PAGE.remove();
-        if (p == null) return;
-        PageState st = STATES.remove(p);
-        if (st != null) st.finish(Rl.shouldCaptureTrace(failed));
+    public static void finish(boolean failed) { finish(failed, Rl.shouldCaptureTrace(failed)); }
+
+    private static void finish(boolean failed, boolean attachTrace) {
+        List<Page> pages = TEST_PAGES.get();
+        TEST_PAGES.remove();
+        for (Page p : pages) {
+            PageState st = STATES.remove(p);
+            if (st != null) st.finish(attachTrace);
+        }
     }
 
     private static void installShutdownHook() {

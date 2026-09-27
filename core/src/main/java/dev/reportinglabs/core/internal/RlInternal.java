@@ -46,6 +46,10 @@ public final class RlInternal {
         String errorStack;
         String skipReason;            // SkipException / @Disabled / assumption message
 
+        /** 'passed' | 'failed' | 'skipped' — final once end() runs; hooks
+         *  registered via onEndCurrent() see the final value. */
+        public String outcome() { return outcome; }
+
         TestSlot(String id, String key, String title, String file, int line, String projectName, List<String> path) {
             this.id = id;
             this.key = key;
@@ -145,15 +149,11 @@ public final class RlInternal {
         TestSlot slot = CURRENT.get();
         if (slot == null) return;
         if (skipped && skipReason != null && !skipReason.isEmpty()) slot.skipReason = skipReason;
-        // Fire onEnd hooks first so attachments they add (screenshot, trace)
-        // land in the slot before it's snapshotted. A skip's throwable
-        // (SkipException) is a reason, not a failure — hooks must not treat
-        // it as one or a skipped test would get a failure screenshot.
-        Throwable forHooks = skipped ? null : failure;
-        for (java.util.function.Consumer<Throwable> cb : slot.onEnd) {
-            try { cb.accept(forHooks); } catch (Throwable ignore) {}
-        }
         slot.duration = Math.max(0, System.currentTimeMillis() - slot.startTime);
+        // Outcome is settled before the onEnd hooks run so they can read it
+        // (a skipped test gets no screenshot/trace, whatever the policy).
+        // A skip's throwable (SkipException) is a reason, not a failure —
+        // hooks receive null for it.
         if (skipped) {
             slot.outcome = "skipped";
         } else if (failure != null) {
@@ -170,6 +170,10 @@ public final class RlInternal {
                 if (sb.length() > 8000) break;
             }
             slot.errorStack = sb.toString();
+        }
+        Throwable forHooks = skipped ? null : failure;
+        for (java.util.function.Consumer<Throwable> cb : slot.onEnd) {
+            try { cb.accept(forHooks); } catch (Throwable ignore) {}
         }
         // Unique id per invocation — every begin() call becomes its own row,
         // which is what data-driven tests and retries need. If a real flaky
