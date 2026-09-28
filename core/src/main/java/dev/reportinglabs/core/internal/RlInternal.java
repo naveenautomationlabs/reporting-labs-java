@@ -226,7 +226,7 @@ public final class RlInternal {
 
     private static Map<String, Object> newStep(String title, String category) {
         Map<String, Object> s = new LinkedHashMap<>();
-        s.put("title", title == null ? "" : title);
+        s.put("title", title == null ? "" : MASKER.maskText(title));
         s.put("category", category == null ? "test.step" : category);
         s.put("duration", 0L);
         s.put("steps", new ArrayList<Map<String, Object>>());
@@ -321,7 +321,7 @@ public final class RlInternal {
     private static String errorSummary(Throwable t) {
         String msg = t.getMessage();
         String head = t.getClass().getSimpleName() + (msg == null ? "" : ": " + firstLine(msg, 300));
-        return head;
+        return MASKER.maskText(head);
     }
 
     static String firstLine(String s, int max) {
@@ -342,7 +342,7 @@ public final class RlInternal {
         if (line == null || line.startsWith("[reporting-labs]")) return;
         // The template joins chunks with '' and splits on '\n' (Node stores
         // raw console chunks), so each stored line keeps its newline.
-        String text = (line.length() > 2000 ? line.substring(0, 2000) + "…" : line) + "\n";
+        String text = MASKER.maskText(line.length() > 2000 ? line.substring(0, 2000) + "…" : line) + "\n";
         TestSlot s = CURRENT.get();
         if (s == null && OPEN_HOOK.get() != null && OPEN_HOOK_BEFORE.get()) {
             // Printed from a @BeforeClass/@BeforeTest that precedes the next
@@ -394,7 +394,7 @@ public final class RlInternal {
             slot.outcome = "skipped";
         } else if (failure != null) {
             slot.outcome = "failed";
-            slot.errorMessage = String.valueOf(failure.getMessage());
+            slot.errorMessage = MASKER.maskText(String.valueOf(failure.getMessage()));
             StringBuilder sb = new StringBuilder(1024);
             for (Throwable t = failure; t != null; t = t.getCause()) {
                 sb.append(t.getClass().getName()).append(": ").append(t.getMessage()).append('\n');
@@ -405,7 +405,7 @@ public final class RlInternal {
                 if (t.getCause() != null && t.getCause() != t) sb.append("Caused by:\n");
                 if (sb.length() > 8000) break;
             }
-            slot.errorStack = sb.toString();
+            slot.errorStack = MASKER.maskText(sb.toString());
         }
         Throwable forHooks = skipped ? null : failure;
         for (java.util.function.Consumer<Throwable> cb : slot.onEnd) {
@@ -434,7 +434,7 @@ public final class RlInternal {
         if (s == null) return;
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("t", System.currentTimeMillis());
-        row.put("msg", message == null ? "" : message);
+        row.put("msg", message == null ? "" : MASKER.maskText(message));
         s.logs.add(row);
     }
 
