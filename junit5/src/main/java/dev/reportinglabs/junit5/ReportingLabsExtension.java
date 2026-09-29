@@ -23,7 +23,7 @@ import java.util.*;
  */
 public class ReportingLabsExtension
     implements BeforeEachCallback, BeforeTestExecutionCallback,
-               AfterTestExecutionCallback, AfterEachCallback, TestWatcher {
+               AfterTestExecutionCallback, AfterEachCallback, TestWatcher, InvocationInterceptor {
 
     static { ShutdownWriter.install(); }
 
@@ -65,6 +65,26 @@ public class ReportingLabsExtension
         }
     }
 
+    /** @BeforeAll / @AfterAll, one hook step each. A @BeforeAll runs before
+     *  any test of the class is open, so its step waits for the first test
+     *  on this thread (same as TestNG's @BeforeClass); an @AfterAll lands
+     *  on the test that ended last. */
+    @Override
+    public void interceptBeforeAllMethod(Invocation<Void> invocation, ReflectiveInvocationContext<Method> ctx, ExtensionContext ext) throws Throwable {
+        runClassHook(invocation, true, "@BeforeAll " + ctx.getExecutable().getName());
+    }
+
+    @Override
+    public void interceptAfterAllMethod(Invocation<Void> invocation, ReflectiveInvocationContext<Method> ctx, ExtensionContext ext) throws Throwable {
+        runClassHook(invocation, false, "@AfterAll " + ctx.getExecutable().getName());
+    }
+
+    private static void runClassHook(Invocation<Void> invocation, boolean before, String title) throws Throwable {
+        RlInternal.Step s = RlInternal.hookBegin(before, title);
+        try { invocation.proceed(); RlInternal.hookEnd(s, null); }
+        catch (Throwable t) { RlInternal.hookEnd(s, t); throw t; }
+    }
+
     private static void closeHook(Throwable error) {
         RlInternal.Step s = HOOK.get();
         HOOK.remove();
@@ -76,8 +96,18 @@ public class ReportingLabsExtension
     private static String hookNames(ExtensionContext ctx, Class<? extends java.lang.annotation.Annotation> ann) {
         Class<?> cls = ctx.getTestClass().orElse(null);
         List<String> names = new ArrayList<>();
-        for (Class<?> c = cls; c != null && c != Object.class; c = c.getSuperclass()) {
-            for (Method m : c.getDeclaredMethods()) if (m.isAnnotationPresent(ann)) names.add(m.getName());
+        // A @Nested class runs its enclosing classes' @BeforeEach / @AfterEach
+        // too: outermost first for @BeforeEach, innermost first for @AfterEach.
+        Deque<Class<?>> chain = new ArrayDeque<>();
+        for (Class<?> c = cls; c != null; c = c.getEnclosingClass()) {
+            if (java.lang.reflect.Modifier.isStatic(c.getModifiers()) && c != cls) break;
+            chain.addFirst(c);
+        }
+        if (ann == org.junit.jupiter.api.AfterEach.class) { Deque<Class<?>> r = new ArrayDeque<>(); for (Class<?> c : chain) r.addFirst(c); chain = r; }
+        for (Class<?> owner : chain) {
+            for (Class<?> c = owner; c != null && c != Object.class; c = c.getSuperclass()) {
+                for (Method m : c.getDeclaredMethods()) if (m.isAnnotationPresent(ann)) names.add(m.getName());
+            }
         }
         return names.isEmpty() ? null : String.join(", ", names);
     }

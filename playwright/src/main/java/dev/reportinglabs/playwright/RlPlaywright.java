@@ -449,6 +449,18 @@ public final class RlPlaywright {
      *  when the capture policy says so; safe to call yourself. */
     public static void screenshotOnFailure() { screenshot(true); }
 
+    /** Cucumber: the scenario's steps are done and its @After hooks, which
+     *  usually close the browser, are about to run. Everything the end of
+     *  the test would do happens now, while the pages are still alive:
+     *  screenshot, trace stop (the steps are read from it), trace
+     *  attachment per policy. The end-of-test hook then finds nothing left. */
+    static void captureBeforeAfterHooks(boolean failed) {
+        if (RlInternal.current() == null || TEST_PAGES.get().isEmpty()) return;
+        if (RlInternal.currentOrLastSkipped()) { finish(false, false); return; }
+        if (Rl.shouldCaptureScreenshot("playwright", failed)) screenshot(failed);
+        finish(failed);
+    }
+
     /** failure.png on a failed test, screen.png otherwise (policy always / only-on-pass). */
     private static void screenshot(boolean failed) {
         if (RlInternal.currentOrLast() == null) return;

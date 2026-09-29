@@ -68,7 +68,7 @@ Run `mvn test`. Open `target/reporting-labs/index.html` (Gradle: `build/reportin
 
 ## Zero code: how the add-ons find your objects
 
-The framework binding hands the test instance to every add-on on the classpath when a test starts and after each `@Before*` / `@After*` hook. The add-on looks for its objects there and wires them; your code does not change.
+The framework binding hands the test instance to every add-on on the classpath when a test starts and after each `@Before*` / `@After*` hook. The add-on looks for its objects there and wires them; your code does not change. Cucumber has no test instance to hand over, so the plugin hands over each glue class that runs and the add-ons search the static holders it reaches, which is where a Cucumber framework keeps its driver.
 
 | Where it looks | Example |
 |---|---|
@@ -80,14 +80,14 @@ The framework binding hands the test instance to every add-on on the classpath w
 
 What it does with them:
 
-- Selenium: the `WebDriver` is wrapped with a step recorder and the field is pointed at the wrapper, so page objects built from it record too. Concrete-typed fields (`ChromeDriver driver`) keep the raw driver; screenshots still work.
+- Selenium: the `WebDriver` is wrapped with a step recorder and the field is pointed at the wrapper, so page objects built from it record too. Concrete-typed fields (`ChromeDriver driver`) keep the raw driver; screenshots still work. When several drivers are in reach (the test's own plus a quit one a factory `ThreadLocal` never cleared) the screenshot comes from the one the test used, and a driver without a session is skipped.
 - Playwright: a `Page` gets every action as a step (read back from Playwright's own trace at the end of the test, so nothing is wrapped and `assertThat(page)` keeps working), a trace and a screenshot per policy; a `BrowserContext` covers its current and future pages; a `Browser` covers every context and is instrumented so pages created inside the test body are attached; an `APIRequestContext` field is swapped for a recording wrapper, so API tests get the API tab. The page's own network traffic (fonts, images, scripts) is not recorded as API calls, same as the Node.js reporter; the trace has it.
 
 If an object lives somewhere the scan cannot reach (a local variable in a helper, a class outside your own packages) attach it by hand once: `RlSelenium.attach(driver)`, `RlPlaywright.attach(page)`, `RlPlaywright.attach(context)`, `RlPlaywright.record(apiContext)`. Attaching an object the scan already found is harmless. `reporting-labs.selenium.autoAttach=false` / `reporting-labs.playwright.autoAttach=false` turn the discovery off.
 
 ## Selenium: zero code
 
-Add `reporting-labs-selenium`. Your `BaseTest`, `DriverFactory` and page objects stay as they are: the WebDriver is found on the test instance (a field, a base class, a `ThreadLocal`, a page object) and wrapped with a step recorder. `RlSelenium.attach(driver)` remains for a driver kept out of sight, `RlSelenium.screenshot("name.png")` for an extra screenshot mid-test. Appium's `AndroidDriver` / `IOSDriver` are found the same way.
+Add `reporting-labs-selenium`. Your `BaseTest`, `DriverFactory` and page objects stay as they are: the WebDriver is found on the test instance (a field, a base class, a `ThreadLocal`, a page object, a static `DriverManager`) and wrapped with a step recorder: `open`, `click`, `type` (password fields as ••••), `clear`, `submit`, navigation, alerts, frame and window switches, `run script`, `perform actions`, with the failing action in red and nested locators as `css selector: .row -> tag name: button`. `RlSelenium.attach(driver)` remains for a driver kept out of sight, `RlSelenium.screenshot("name.png")` for an extra screenshot mid-test. Appium's `AndroidDriver` / `IOSDriver` are found the same way.
 
 ## Playwright for Java: zero code
 
@@ -104,7 +104,7 @@ APIRequestContext api = RlPlaywright.record(page.request());   // page.request()
 
 ## REST Assured: zero code
 
-Add `reporting-labs-rest-assured`. The recording filter goes into `RestAssured.filters()` when the run starts (again after a `RestAssured.reset()`). Query and path params resolved, form fields and multipart part names, text bodies up to 200 KB, binary types as a placeholder, failed requests with status 0. `reporting-labs.restassured.autoRecord=false` turns it off.
+Add `reporting-labs-rest-assured`. The recording filter goes into `RestAssured.filters()` when the run starts and is put back at every lifecycle point, so a `RestAssured.reset()` or `replaceFiltersWith(...)` in a hook is fine (inside a test body it drops the filter for the rest of that test; add `RestAssured.filters(new RlRestAssuredFilter())` after it if you must). Query and path params resolved, form fields and multipart part names, text bodies up to 200 KB, binary types as a placeholder, failed requests with status 0. `reporting-labs.restassured.autoRecord=false` turns it off.
 
 ## Cucumber JVM: one property
 
@@ -116,7 +116,7 @@ Add `reporting-labs-cucumber` and register the plugin once:
 cucumber.plugin=dev.reportinglabs.cucumber.ReportingLabsPlugin
 ```
 
-Every scenario is one row named after the scenario, at `orders.feature:13`, with the Gherkin steps (Background included) as steps, `@Before`/`@After` hooks in the hook groups, data tables and doc strings as data blocks, Scenario Outline rows titled with their example values. Tags become filters: `@P1` is the priority, `@blocker` the severity, `@owner:naveen` an owner chip, everything else a tag. An undefined step points at the feature line, and the steps after a failure show as "not run". With the TestNG runner add `reporting-labs-testng` as usual; with the JUnit Platform engine the plugin alone is enough. Selenium and REST Assured add-ons work inside step definitions unchanged.
+Every scenario is one row named after the scenario, at `orders.feature:13`, with the Gherkin steps (Background included) as steps, `@Before`/`@After` hooks in the hook groups, data tables and doc strings as data blocks, Scenario Outline rows titled with their example values. Tags become filters: `@P1` is the priority, `@blocker` the severity, `@owner:naveen` an owner chip, everything else a tag. An undefined step points at the feature line, and the steps after a failure show as "not run". With the TestNG runner add `reporting-labs-testng` as usual; with the JUnit Platform engine the plugin alone is enough. A Selenium driver or Playwright page kept in a static factory by your hooks is found through the glue classes, its actions land under the Gherkin step that made them, and the screenshot is taken before the `@After` hooks that quit it; REST Assured calls are recorded from any step.
 
 ## A typical framework, unchanged
 
@@ -261,6 +261,8 @@ reportingLabs sits on the framework's `@Test` lifecycle — it does not care wha
 |---|---|---|
 | Rows show hooks only: no screenshot, no API tab, no trace | The tool add-on is not on the test classpath, or it is older than 0.1.15, which needed `RlPlaywright.attach(page)` | Add `reporting-labs-selenium` / `-playwright` / `-rest-assured` at the same version as the binding |
 | Page exists but nothing is recorded | The page is a local variable, or the holder class is outside your packages | `RlPlaywright.attach(page)` once after creating it |
+| Cucumber: no Selenium steps or screenshot on a scenario | The driver sits in an instance field of a step class, not in a static holder the glue classes reach | `RlSelenium.attach(driver)` once, or keep it in a `ThreadLocal` in your factory |
+| REST Assured calls missing after `RestAssured.reset()` in a test body | The reset dropped the global filter for the rest of that test | `RestAssured.filters(new RlRestAssuredFilter())` right after it; a reset in a hook needs nothing |
 | No video | Playwright decides at context creation | `browser.newContext(RlPlaywright.contextOptions())` and `reporting-labs.playwright.video=on-failure` |
 | `page.request()` calls missing from the API tab | The context is created inside the test body | `RlPlaywright.record(page.request())` and use the wrapper |
 | Cucumber rows titled "Runs Cucumber Scenarios" | The plugin is not registered | `cucumber.plugin=dev.reportinglabs.cucumber.ReportingLabsPlugin` in `cucumber.properties` (TestNG runner) or `junit-platform.properties` (JUnit Platform engine) |

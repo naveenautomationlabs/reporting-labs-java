@@ -43,6 +43,22 @@ public final class PlaywrightIntegration implements RlIntegration {
         scan(instance, 0, Collections.newSetFromMap(new IdentityHashMap<>()), null);
     }
 
+    /** Cucumber hands over the glue class instead of an instance: look at
+     *  the statics it reaches (a PlaywrightFactory ThreadLocal). */
+    @Override
+    public void onTestClass(Class<?> type) {
+        if (!Config.playwrightAutoAttach()) return;
+        scanStatics(type, Collections.newSetFromMap(new IdentityHashMap<>()), null);
+    }
+
+    /** Cucumber: steps done, the @After hooks that close the browser are
+     *  about to run. Screenshot now; the trace stops itself on page close. */
+    @Override
+    public void onTestBodyEnd(boolean failed) {
+        if (!Config.playwrightAutoAttach()) return;
+        RlPlaywright.captureBeforeAfterHooks(failed);
+    }
+
     @Override
     public void onTestEnd() {
         if (!Config.playwrightAutoAttach()) return;
@@ -75,14 +91,16 @@ public final class PlaywrightIntegration implements RlIntegration {
         // Statics too: of the test class hierarchy and of every class it
         // reaches (a PlaywrightFactory with static ThreadLocal<Page> holders
         // that the test only ever calls as TlFactory.getPage()).
-        if (depth == 0) {
-            for (Class<?> c : dev.reportinglabs.core.internal.ClassRefs.reachable(obj.getClass(), PlaywrightIntegration::userClass)) {
-                for (Field f : c.getDeclaredFields()) {
-                    if (!Modifier.isStatic(f.getModifiers()) || f.isSynthetic()) continue;
-                    Object v;
-                    try { f.setAccessible(true); v = f.get(null); } catch (Throwable t) { continue; }
-                    handle(f, null, v, 1, seen, late);
-                }
+        if (depth == 0) scanStatics(obj.getClass(), seen, late);
+    }
+
+    private static void scanStatics(Class<?> from, Set<Object> seen, List<Page> late) {
+        for (Class<?> c : dev.reportinglabs.core.internal.ClassRefs.reachable(from, PlaywrightIntegration::userClass)) {
+            for (Field f : c.getDeclaredFields()) {
+                if (!Modifier.isStatic(f.getModifiers()) || f.isSynthetic()) continue;
+                Object v;
+                try { f.setAccessible(true); v = f.get(null); } catch (Throwable t) { continue; }
+                handle(f, null, v, 1, seen, late);
             }
         }
     }

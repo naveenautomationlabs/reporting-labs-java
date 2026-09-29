@@ -290,6 +290,24 @@ public final class RlInternal {
         }
     }
 
+    /** Called by bindings that have no test instance (Cucumber) with the
+     *  class of the step definition or hook about to run. */
+    public static void testClass(Class<?> type) {
+        if (type == null || INTEGRATIONS.isEmpty()) return;
+        for (dev.reportinglabs.core.spi.RlIntegration i : INTEGRATIONS) {
+            try { i.onTestClass(type); } catch (Throwable ignore) {}
+        }
+    }
+
+    /** Called by a binding whose after-hooks run before the outcome is
+     *  final (Cucumber), just before the first after-hook. */
+    public static void testBodyEnd(boolean failed) {
+        if (INTEGRATIONS.isEmpty()) return;
+        for (dev.reportinglabs.core.spi.RlIntegration i : INTEGRATIONS) {
+            try { i.onTestBodyEnd(failed); } catch (Throwable ignore) {}
+        }
+    }
+
     // ---- steps & hooks ----
 
     /** An open step frame. Holds the mutable map that is already linked into

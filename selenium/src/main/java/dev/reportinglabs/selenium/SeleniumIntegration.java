@@ -2,6 +2,7 @@ package dev.reportinglabs.selenium;
 
 import dev.reportinglabs.core.Rl;
 import dev.reportinglabs.core.internal.Config;
+import dev.reportinglabs.core.internal.RlInternal;
 import dev.reportinglabs.core.spi.RlIntegration;
 import org.openqa.selenium.WebDriver;
 
@@ -45,6 +46,28 @@ public final class SeleniumIntegration implements RlIntegration {
         if (!Config.seleniumAutoAttach()) return;
         LAST_INSTANCE.set(instance);
         scan(instance, 0, Collections.newSetFromMap(new IdentityHashMap<>()));
+    }
+
+    /** Cucumber hands over the glue class instead of an instance: look at
+     *  the statics it reaches (a DriverFactory ThreadLocal). */
+    @Override
+    public void onTestClass(Class<?> type) {
+        if (!Config.seleniumAutoAttach()) return;
+        scanStatics(type, Collections.newSetFromMap(new IdentityHashMap<>()));
+    }
+
+    /** Cucumber: the scenario's steps are done, its @After hooks (which
+     *  usually quit the driver) are about to run. Capture now; the end-of-
+     *  test capture below then finds the screenshot already there. */
+    @Override
+    public void onTestBodyEnd(boolean failed) {
+        if (!Config.seleniumAutoAttach()) return;
+        if (RlSelenium.currentDriver() == null) {
+            Object inst = LAST_INSTANCE.get();
+            if (inst != null) scan(inst, 0, Collections.newSetFromMap(new IdentityHashMap<>()));
+        }
+        if (RlSelenium.currentDriver() == null) return;
+        if (!RlInternal.currentOrLastSkipped() && Rl.shouldCaptureScreenshot("selenium", failed)) RlSelenium.autoScreenshot("screen.png");
     }
 
     @Override
@@ -94,8 +117,12 @@ public final class SeleniumIntegration implements RlIntegration {
         // Statics too: of the test class hierarchy and of every class it
         // reaches (a DriverFactory with a static ThreadLocal<WebDriver> that
         // the test only ever calls as DriverFactory.getDriver()).
-        if (depth == 0) {
-            for (Class<?> c : dev.reportinglabs.core.internal.ClassRefs.reachable(obj.getClass(), SeleniumIntegration::userClass)) {
+        if (depth == 0) scanStatics(obj.getClass(), seen);
+    }
+
+    private static void scanStatics(Class<?> from, Set<Object> seen) {
+        {
+            for (Class<?> c : dev.reportinglabs.core.internal.ClassRefs.reachable(from, SeleniumIntegration::userClass)) {
                 for (Field f : c.getDeclaredFields()) {
                     if (!Modifier.isStatic(f.getModifiers()) || f.isSynthetic()) continue;
                     Object v;

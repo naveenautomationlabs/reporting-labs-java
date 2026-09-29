@@ -47,6 +47,9 @@ public final class ReportingLabsPlugin implements ConcurrentEventListener {
     }
 
     private void onCaseStarted(TestCaseStarted e) {
+        handedOver.get().clear();
+        failedSoFar.set(Boolean.FALSE);
+        bodyEnded.set(Boolean.FALSE);
         TestCase tc = e.getTestCase();
         String file = relative(tc.getUri());
         int line = tc.getLocation() != null ? tc.getLocation().getLine() : 0;
@@ -76,10 +79,22 @@ public final class ReportingLabsPlugin implements ConcurrentEventListener {
         }
     }
 
+    /** Whether a step or before-hook of the running scenario has failed,
+     *  and whether the add-ons were already told the body is over. */
+    private final ThreadLocal<Boolean> failedSoFar = ThreadLocal.withInitial(() -> Boolean.FALSE);
+    private final ThreadLocal<Boolean> bodyEnded = ThreadLocal.withInitial(() -> Boolean.FALSE);
+
     private void onStepStarted(TestStepStarted e) {
         TestStep ts = e.getTestStep();
+        handOverClass(ts.getCodeLocation());
         if (ts instanceof HookTestStep) {
             HookType t = ((HookTestStep) ts).getHookType();
+            if (t == HookType.AFTER && !bodyEnded.get()) {
+                // @After hooks run inside the scenario, before its result is
+                // reported; the driver they quit must be captured first.
+                bodyEnded.set(Boolean.TRUE);
+                RlInternal.testBodyEnd(failedSoFar.get());
+            }
             boolean before = t == HookType.BEFORE || t == HookType.BEFORE_STEP;
             String name = t == HookType.BEFORE ? "@Before" : t == HookType.AFTER ? "@After" : t == HookType.BEFORE_STEP ? "@BeforeStep" : "@AfterStep";
             String code = ts.getCodeLocation();
@@ -117,6 +132,21 @@ public final class ReportingLabsPlugin implements ConcurrentEventListener {
         }
     }
 
+    /** Step definitions are instantiated by Cucumber's object factory, out of
+     *  our sight; the add-ons get the glue class instead so they can look at
+     *  what its statics (a DriverFactory ThreadLocal) hold. */
+    private final ThreadLocal<Set<String>> handedOver = ThreadLocal.withInitial(HashSet::new);
+    private void handOverClass(String codeLocation) {
+        if (codeLocation == null) return;
+        int p = codeLocation.indexOf('(');
+        int i = (p > 0 ? codeLocation.substring(0, p) : codeLocation).lastIndexOf('.');
+        if (i <= 0) return;
+        String cls = codeLocation.substring(0, i);
+        if (!handedOver.get().add(cls)) return;   // once per glue class, until a hook runs
+        try { RlInternal.testClass(Class.forName(cls, false, Thread.currentThread().getContextClassLoader())); }
+        catch (Throwable ignore) {}
+    }
+
     private void onStepFinished(TestStepFinished e) {
         TestStep ts = e.getTestStep();
         RlInternal.Step s = open.remove(ts);
@@ -137,7 +167,10 @@ public final class ReportingLabsPlugin implements ConcurrentEventListener {
             undefinedStep.put(e.getTestCase().getId(), err.getMessage());
             RlInternal.errorAt(file, line, snippet(e.getTestCase().getUri(), line));
         }
+        if (err != null || (st != Status.PASSED && st != Status.SKIPPED)) failedSoFar.set(Boolean.TRUE);
         if (scenarioHook) RlInternal.hookEnd(s, err); else RlInternal.stepEnd(s, err);
+        // A hook is where drivers get created: look again at the next step.
+        if (ts instanceof HookTestStep) handedOver.get().clear();
     }
 
     private void onCaseFinished(TestCaseFinished e) {
