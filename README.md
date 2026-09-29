@@ -5,33 +5,22 @@
 
 Turn a Java test run into **one HTML file** you can share. No server, no login, no expiry. Open it in a browser, attach it to a Jira ticket, drop it in Slack — it just works.
 
-Ships four Maven artifacts, all under the `dev.reportinglabs` groupId:
+Six Maven artifacts, all under the `dev.reportinglabs` groupId. Pick the one for your test framework, then add the one for your tool:
 
-- **`reporting-labs-core`** — engine, annotations, `Rl.*` runtime helpers. Framework-agnostic. Pull it in from any test framework.
-- **`reporting-labs-junit5`** — JUnit 5 Extension, auto-registered via ServiceLoader.
-- **`reporting-labs-testng`** — TestNG listener, auto-registered via ServiceLoader.
-- **`reporting-labs-playwright`** — one-line auto-capture for Playwright for Java: request logging, screenshot on failure, trace attachment.
+| Artifact | What it is |
+|---|---|
+| `reporting-labs-testng` | TestNG listener, auto-registered via ServiceLoader |
+| `reporting-labs-junit5` | JUnit 5 extension, auto-registered via ServiceLoader |
+| `reporting-labs-selenium` | Zero code: finds the WebDriver on your test instance, records every open/click/type as a step, screenshots per policy |
+| `reporting-labs-rest-assured` | Zero code: registers a recording filter, every request lands in the API tab with headers, bodies, status and timing |
+| `reporting-labs-playwright` | One line, `RlPlaywright.attach(page)`: API calls, trace, screenshot and video per policy |
+| `reporting-labs-core` | Engine, annotations, `Rl.*` helpers. Comes with the two above; use it alone from plain code |
 
-Every port (Node.js, Java, Python later) renders from the same shared HTML template — a Java team's report is byte-for-byte the report a JavaScript team opens.
+Every port (Node.js, Java) renders the same HTML template. A Java team's report is byte-for-byte the report a JavaScript team opens.
 
 ## Install
 
-**JUnit 5:**
-
-```xml
-<dependency>
-  <groupId>dev.reportinglabs</groupId>
-  <artifactId>reporting-labs-junit5</artifactId>
-  <version>0.1.0</version>
-  <scope>test</scope>
-</dependency>
-```
-
-Then turn on JUnit 5 extension auto-detection — create `src/test/resources/junit-platform.properties`:
-
-```properties
-junit.jupiter.extensions.autodetection.enabled=true
-```
+Step by step, with screenshots, per tool: [Selenium](https://reportinglabs.dev/get-started/java/selenium) · [Playwright](https://reportinglabs.dev/get-started/java/playwright) · [REST Assured](https://reportinglabs.dev/get-started/java/rest-assured) · [Other tools](https://reportinglabs.dev/get-started/java/other-tools).
 
 **TestNG:**
 
@@ -39,12 +28,68 @@ junit.jupiter.extensions.autodetection.enabled=true
 <dependency>
   <groupId>dev.reportinglabs</groupId>
   <artifactId>reporting-labs-testng</artifactId>
-  <version>0.1.0</version>
+  <version>0.1.12</version>
   <scope>test</scope>
 </dependency>
 ```
 
-That's it — the listener auto-registers via ServiceLoader.
+Nothing to register: the listener is found through ServiceLoader. If you keep a `<listeners>` block in `testng.xml`, `dev.reportinglabs.testng.ReportingLabsListener` can go there too.
+
+**JUnit 5:**
+
+```xml
+<dependency>
+  <groupId>dev.reportinglabs</groupId>
+  <artifactId>reporting-labs-junit5</artifactId>
+  <version>0.1.12</version>
+  <scope>test</scope>
+</dependency>
+```
+
+Then one line in `src/test/resources/junit-platform.properties`:
+
+```properties
+junit.jupiter.extensions.autodetection.enabled=true
+```
+
+**Your tool** (same version, `test` scope): `reporting-labs-selenium`, `reporting-labs-rest-assured` or `reporting-labs-playwright`.
+
+Run `mvn test`. Open `target/reporting-labs/index.html` (Gradle: `build/reporting-labs/index.html`).
+
+## What the report shows
+
+- Every test with its real source line (`OrdersApiTest.java:42`); on failure the failing line, a code snippet and a plain-language reading of the error (element not found, assertion with expected/actual, site unreachable, test timed out, hook failed), for Playwright, Selenium, TestNG, JUnit and AssertJ errors.
+- Before/After hooks with timings, `Rl.step()` groups, Selenium actions, `System.out` / `System.err` lines, retries grouped as attempts and marked flaky, DataProvider rows as Parameters.
+- API calls with headers, bodies and Copy as cURL. Screenshots, traces and videos per policy.
+- Secrets masked everywhere: headers, bodies, log lines, console output, data blocks, error messages, even `"password", "x"` literals in a code snippet.
+- Trend, new vs known failures, flaky history and got-slower across runs, from `reporting-labs.history.json`.
+- One lane per worker thread on the Timeline.
+
+## Selenium: zero code
+
+Add `reporting-labs-selenium`. Your `BaseTest`, `DriverFactory` and page objects stay as they are: the WebDriver is found on the test instance (a field, a base class, a `ThreadLocal`, a page object) and wrapped with a step recorder. `RlSelenium.attach(driver)` remains for a driver kept out of sight, `RlSelenium.screenshot("name.png")` for an extra screenshot mid-test.
+
+## REST Assured: zero code
+
+Add `reporting-labs-rest-assured`. The recording filter goes into `RestAssured.filters()` when the run starts (again after a `RestAssured.reset()`). Query and path params resolved, form fields and multipart part names, text bodies up to 200 KB, binary types as a placeholder, failed requests with status 0. `reporting-labs.restassured.autoRecord=false` turns it off.
+
+## Playwright for Java: one line
+
+```java
+import dev.reportinglabs.playwright.RlPlaywright;
+import com.microsoft.playwright.*;
+
+@BeforeEach
+void setup() {
+  playwright = Playwright.create();
+  browser    = playwright.chromium().launch();
+  context    = browser.newContext(RlPlaywright.contextOptions());   // records video when the policy asks for it
+  page       = context.newPage();
+  RlPlaywright.attach(page);                                        // API calls, trace, screenshot per policy
+}
+```
+
+`RlPlaywright.record(page.request())` records `APIRequestContext` calls too. Popups: `RlPlaywright.attach(context)` wires every future page.
 
 ## A first test
 
@@ -62,35 +107,11 @@ class CheckoutTest {
     Rl.testData("Cart snapshot", Map.of(
       "user", "demo@shop.io", "card", "4242…", "total", 99.90));
     Rl.log("opening checkout");
-    // your existing Selenium / Playwright / plain code — no wrappers
+    Rl.step("pay", () -> checkout.payWithSavedCard());
+    // your existing Selenium / Playwright / REST Assured code, no wrappers
   }
 }
 ```
-
-Run `mvn test`. Open `reporting-labs/index.html`.
-
-## Playwright for Java auto-capture
-
-```java
-import dev.reportinglabs.playwright.RlPlaywright;
-import com.microsoft.playwright.*;
-
-@BeforeEach
-void setup() {
-  playwright = Playwright.create();
-  browser    = playwright.chromium().launch();
-  page       = browser.newPage();
-  RlPlaywright.attach(page);   // <-- one line, auto-captures everything
-}
-```
-
-With that line in place:
-
-- Every `page.request()` / `page.goto()` is recorded as an API call in the report,
-- A Playwright trace is started and attached on test finish,
-- On failure a full-page screenshot is attached automatically.
-
-Nothing else in your test code changes.
 
 ## Runtime helpers
 
@@ -98,11 +119,13 @@ For everything you know at runtime, use `Rl` — same surface across every frame
 
 | Method | What it does |
 |---|---|
-| `Rl.log(msg)` | Step message shown in the test detail's Log panel |
-| `Rl.testData(name, obj)` | Pinned data block; sensitive keys masked as `****` |
-| `Rl.api(method, url, status)` | Record an HTTP call manually (auto with `RlPlaywright.attach`) |
-| `Rl.attach(name, mime, bytes)` | Any binary attachment (screenshot, video, PDF) |
+| `Rl.log(msg)` | Log line with a timestamp in the test detail |
+| `Rl.step(title, body)` | Groups whatever runs inside as a step with timing; nests; returns a value with the `Supplier` overload |
+| `Rl.testData(name, obj)` | Pinned data block: a `Map` as key/value, a `List` of `Map`s or CSV text as a table; sensitive keys masked |
+| `Rl.api(method, url, status, …)` | Record an HTTP call by hand (automatic with the Selenium, REST Assured and Playwright add-ons) |
+| `Rl.attach(name, mime, bytes)` | Any file: screenshot, video, PDF, JSON |
 | `Rl.meta(key, value)` | Add a chip to the current test |
+| `Rl.shouldCaptureScreenshot()` | The capture policy applied to the current test's outcome, for base classes that take their own screenshots |
 
 ## Annotations
 
@@ -136,11 +159,17 @@ Or once, in `src/test/resources/reporting-labs.properties`:
 
 ```properties
 reporting-labs.title=Nightly regression
-reporting-labs.outputFolder=target/reporting-labs
 reporting-labs.project.name=ShopLite Web
 reporting-labs.metadata.env=staging
 reporting-labs.links.story=https://shoplite.atlassian.net/browse/{id}
+# never | on-failure | always | only-on-pass
+reporting-labs.screenshot=on-failure
+reporting-labs.trace=on-failure
+reporting-labs.video=never
+reporting-labs.maskKeys=otp,pan
 ```
+
+Comments go on their own line; `java.util.Properties` has no inline comments.
 
 Full reference at [reportinglabs.dev](https://reportinglabs.dev/reference/options).
 
@@ -148,18 +177,18 @@ Full reference at [reportinglabs.dev](https://reportinglabs.dev/reference/option
 
 reportingLabs sits on the framework's `@Test` lifecycle — it does not care what happens inside the test body. Same package works for:
 
-- Playwright for Java (auto-capture with `reporting-labs-playwright`)
-- Selenium Java: add `reporting-labs-selenium` and your existing `BaseTest` / `DriverFactory` / page objects are found automatically — steps per action, screenshots per policy
-- REST Assured: add `reporting-labs-rest-assured` and every request lands in the API tab with headers, bodies, status and timing, secrets masked
-- Karate, Cucumber (both run under JUnit 5 or TestNG)
-- Plain code, HttpClient, JDBC, whatever
+- Selenium and Appium (`reporting-labs-selenium`)
+- REST Assured (`reporting-labs-rest-assured`)
+- Playwright for Java (`reporting-labs-playwright`)
+- Cucumber JVM via the TestNG runner; Karate and Cucumber on the JUnit Platform engine are on the roadmap
+- Plain code, HttpClient, JDBC: `Rl.api()` and `Rl.testData()` by hand
 
 ## Requirements
 
 - JDK 11+
 - Maven 3.9+ or Gradle 8+
-- JUnit Jupiter 5.10+ or TestNG 7.10+
-- Playwright for Java 1.47+ (only for the `reporting-labs-playwright` artifact)
+- JUnit Jupiter 5.10+ or TestNG 7.5+
+- Selenium 4.x, REST Assured 4.x to 6.x, Playwright for Java 1.47+ (each only for its add-on)
 
 ## Contributing
 
