@@ -53,8 +53,29 @@ public final class TemplateRenderer {
         out = replaceOrInjectStyle(out, P_CUSTOM_CSS, customCssOut);
         out = replaceOnce(out, P_DATA, json);
         if (!Config.embedFonts()) out = dropEmbeddedFonts(out);
+        out = applyThemeAttributes(out, optString(data, "options.theme"), optString(data, "options.palette"));
         return out;
     }
+
+    /** The snapshot's html tag carries the palette it was built with; the
+     *  Node.js renderer writes data-theme / data-palette from the options at
+     *  render time, so do the same here or reporting-labs.theme=dark and
+     *  reporting-labs.palette=ocean would be ignored. */
+    private static final java.util.regex.Pattern HTML_TAG = java.util.regex.Pattern.compile("<html\\b[^>]*>");
+
+    static String applyThemeAttributes(String html, String theme, String palette) {
+        java.util.regex.Matcher m = HTML_TAG.matcher(html);
+        if (!m.find()) return html;
+        String tag = m.group();
+        tag = tag.replaceAll("\\s+data-theme=\"[^\"]*\"", "").replaceAll("\\s+data-palette=\"[^\"]*\"", "");
+        StringBuilder attrs = new StringBuilder();
+        if (theme != null && !theme.isEmpty() && !"auto".equals(theme)) attrs.append(" data-theme=\"").append(escapeAttr(theme)).append('"');
+        if (palette != null && !palette.isEmpty()) attrs.append(" data-palette=\"").append(escapeAttr(palette)).append('"');
+        tag = tag.substring(0, tag.length() - 1) + attrs + ">";
+        return html.substring(0, m.start()) + tag + html.substring(m.end());
+    }
+
+    private static String escapeAttr(String v) { return v.replaceAll("[^A-Za-z0-9_-]", ""); }
 
     /** The snapshot carries IBM Plex as base64 (about 130 KB). With
      *  reporting-labs.embedFonts=false the report links Google Fonts instead,
