@@ -33,6 +33,9 @@ final class TraceSteps {
     static void record(Path zip, boolean dropOwnScreenshot) {
         List<Map<String, Object>> calls = new ArrayList<>();
         Map<String, Map<String, Object>> open = new HashMap<>();
+        // Action times in the trace are monotonic; context-options carries
+        // one (wallTime, monotonicTime) pair to convert them to wall clock.
+        long[] wallOffset = { 0L };
         try (ZipFile z = new ZipFile(zip.toFile())) {
             List<? extends ZipEntry> entries = Collections.list(z.entries());
             entries.sort(Comparator.comparing(ZipEntry::getName));
@@ -48,6 +51,9 @@ final class TraceSteps {
                         @SuppressWarnings("unchecked") Map<String, Object> ev = (Map<String, Object>) o;
                         String type = str(ev.get("type"));
                         String id = str(ev.get("callId"));
+                        if ("context-options".equals(type) && ev.get("wallTime") != null && ev.get("monotonicTime") != null) {
+                            wallOffset[0] = num(ev.get("wallTime")) - num(ev.get("monotonicTime"));
+                        }
                         if ("before".equals(type) && id != null) { open.put(id, ev); calls.add(ev); }
                         else if ("after".equals(type) && id != null) {
                             Map<String, Object> b = open.remove(id);
@@ -71,7 +77,8 @@ final class TraceSteps {
             long duration = end > 0 && start > 0 ? end - start : 0;
             String error = null;
             if (c.get("_error") instanceof Map) error = firstLine(str(((Map<?, ?>) c.get("_error")).get("message")));
-            RlInternal.recordStep(title, "pw:api", duration, error);
+            long wallStart = wallOffset[0] != 0 && start > 0 ? start + wallOffset[0] : 0L;
+            RlInternal.recordStepAt(title, "pw:api", wallStart, duration, error);
         }
     }
 

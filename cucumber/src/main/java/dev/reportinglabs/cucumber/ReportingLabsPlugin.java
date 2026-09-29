@@ -44,6 +44,8 @@ public final class ReportingLabsPlugin implements ConcurrentEventListener {
         publisher.registerHandlerFor(TestStepStarted.class, this::onStepStarted);
         publisher.registerHandlerFor(TestStepFinished.class, this::onStepFinished);
         publisher.registerHandlerFor(TestCaseFinished.class, this::onCaseFinished);
+        publisher.registerHandlerFor(EmbedEvent.class, this::onEmbed);
+        publisher.registerHandlerFor(WriteEvent.class, this::onWrite);
     }
 
     private void onCaseStarted(TestCaseStarted e) {
@@ -147,6 +149,44 @@ public final class ReportingLabsPlugin implements ConcurrentEventListener {
         catch (Throwable ignore) {}
     }
 
+    /** scenario.attach(bytes, mediaType, name) from a hook or step. */
+    private void onEmbed(EmbedEvent e) {
+        if (RlInternal.currentOrLast() == null) return;
+        String name = e.getName();
+        if (name == null || name.isEmpty()) name = "attachment" + extension(e.getMediaType());
+        else if (!name.contains(".")) name = name + extension(e.getMediaType());
+        RlInternal.attach(name, e.getMediaType(), e.getData());
+    }
+
+    /** scenario.log(text). */
+    private void onWrite(WriteEvent e) {
+        if (RlInternal.currentOrLast() == null || e.getText() == null) return;
+        RlInternal.log(e.getText());
+    }
+
+    private static String extension(String mediaType) {
+        if (mediaType == null) return "";
+        String m = mediaType.toLowerCase(Locale.ROOT);
+        int semi = m.indexOf(';'); if (semi > 0) m = m.substring(0, semi).trim();
+        switch (m) {
+            case "image/png": return ".png";
+            case "image/jpeg": case "image/jpg": return ".jpg";
+            case "image/gif": return ".gif";
+            case "image/webp": return ".webp";
+            case "image/svg+xml": return ".svg";
+            case "text/plain": return ".txt";
+            case "text/html": return ".html";
+            case "text/csv": return ".csv";
+            case "application/json": return ".json";
+            case "application/xml": case "text/xml": return ".xml";
+            case "application/pdf": return ".pdf";
+            case "application/zip": return ".zip";
+            case "video/webm": return ".webm";
+            case "video/mp4": return ".mp4";
+            default: return "";
+        }
+    }
+
     private void onStepFinished(TestStepFinished e) {
         TestStep ts = e.getTestStep();
         RlInternal.Step s = open.remove(ts);
@@ -154,8 +194,20 @@ public final class ReportingLabsPlugin implements ConcurrentEventListener {
         Result r = e.getResult();
         Status st = r.getStatus();
         boolean scenarioHook = ts instanceof HookTestStep && (((HookTestStep) ts).getHookType() == HookType.BEFORE || ((HookTestStep) ts).getHookType() == HookType.AFTER);
-        if (st == Status.SKIPPED && !scenarioHook && r.getError() == null) { RlInternal.stepSkip(s); return; }
+        if (st == Status.SKIPPED && !scenarioHook) {
+            // Not run after an earlier failure, or the step aborted the
+            // scenario on purpose (an assumption): grey, never red. The
+            // scenario itself ends as skipped with the reason.
+            RlInternal.stepSkip(s);
+            if (ts instanceof HookTestStep) handedOver.get().clear();
+            return;
+        }
         Throwable err = r.getError();
+        if (ts instanceof PickleStepTestStep && err != null && err.getClass().getSimpleName().equals("AmbiguousStepDefinitionsException")) {
+            // The problem is in the feature line, not in a stack frame.
+            Step step = ((PickleStepTestStep) ts).getStep();
+            RlInternal.errorAt(relative(e.getTestCase().getUri()), step.getLine(), snippet(e.getTestCase().getUri(), step.getLine()));
+        }
         if (ts instanceof PickleStepTestStep && (st == Status.UNDEFINED || st == Status.PENDING)) {
             Step step = ((PickleStepTestStep) ts).getStep();
             String text = step.getText();

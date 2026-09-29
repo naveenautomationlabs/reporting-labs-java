@@ -37,6 +37,7 @@ public final class ErrorExplainer {
         LABELS.put("thrown", "Test threw an error");
         LABELS.put("undefined-step", "Step has no step definition");
         LABELS.put("pending-step", "Step definition not written yet");
+        LABELS.put("ambiguous-step", "Step matches more than one step definition");
     }
 
     /** Playwright for Java wraps the driver's message as
@@ -116,6 +117,11 @@ public final class ErrorExplainer {
         if (undefinedStep != null) {
             return out("undefined-step", "No step definition matches \"" + undefinedStep + "\", so the scenario stopped there and the steps after it did not run.",
                 "Write a method annotated @Given/@When/@Then whose expression matches this text, in a class under your glue package. Cucumber printed a ready-to-paste snippet in the console.");
+        }
+        if (type.endsWith("AmbiguousStepDefinitionsException")) {
+            String step = pick(msg, "^\\\"(.+?)\\\" matches more than one step definition");
+            return out("ambiguous-step", "More than one step definition matches " + (step != null ? "\"" + step + "\"" : "this step") + ", so Cucumber could not pick one and the scenario stopped there.",
+                "Make the expressions distinct (a literal word instead of {word}, or an anchored regular expression). The message below lists every matching method.");
         }
         String pendingStep = pick(msg, "^The step '(.+?)' is pending");
         if (pendingStep != null || type.endsWith("PendingException")) {

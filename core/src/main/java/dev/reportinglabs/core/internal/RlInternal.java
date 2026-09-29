@@ -44,6 +44,10 @@ public final class RlInternal {
         /** Step tree: Rl.step() frames, framework hooks, driver actions. */
         final List<Map<String, Object>> steps = new ArrayList<>();
         final Deque<Map<String, Object>> openSteps = new ArrayDeque<>();
+        /** Wall-clock [start, end] of every finished step and hook, so an
+         *  action read back later (a Playwright trace) can be filed under the
+         *  step that was running when it happened. Identity keys. */
+        final Map<Map<String, Object>, long[]> windows = new IdentityHashMap<>();
         Map<String, Object> beforeHooks, afterHooks;   // "Before Hooks" / "After Hooks" groups
         final List<String> stdout = new ArrayList<>();
         final List<String> stderr = new ArrayList<>();
@@ -360,22 +364,50 @@ public final class RlInternal {
 
     public static void stepEnd(Step step, Throwable error) {
         if (step == null) return;
-        step.data.put("duration", Math.max(0, System.currentTimeMillis() - step.start));
+        long now = System.currentTimeMillis();
+        step.data.put("duration", Math.max(0, now - step.start));
         if (error != null) step.data.put("error", errorSummary(error));
         TestSlot s = currentOrLast();
-        if (s != null && s.openSteps.peek() == step.data) s.openSteps.pop();
+        if (s != null) {
+            if (s.openSteps.peek() == step.data) s.openSteps.pop();
+            s.windows.put(step.data, new long[] { step.start, now });
+        }
     }
 
     /** Appends an already-finished step (an action read back from a
      *  Playwright trace) to the running or just-ended test. */
     public static void recordStep(String title, String category, long durationMs, String error) {
+        recordStepAt(title, category, 0L, durationMs, error);
+    }
+
+    /** Same, for an action whose wall-clock start is known: it is filed
+     *  under the deepest step or hook that was running at that moment (a
+     *  Gherkin step, an Rl.step() block, a @Before hook), so actions read
+     *  back from a trace sit where they happened. Unknown start (0) or no
+     *  matching step: appended to the open step or the top level. */
+    public static void recordStepAt(String title, String category, long startWall, long durationMs, String error) {
         TestSlot s = currentOrLast();
         if (s == null) return;
         Map<String, Object> m = newStep(title, category);
         m.put("duration", Math.max(0, durationMs));
         if (error != null && !error.isEmpty()) m.put("error", MASKER.maskText(error));
-        Map<String, Object> parent = s.openSteps.peek();
+        Map<String, Object> parent = startWall > 0 ? containerAt(s, s.steps, startWall) : null;
+        if (parent == null) parent = s.openSteps.peek();
         (parent != null ? children(parent) : s.steps).add(m);
+    }
+
+    private static Map<String, Object> containerAt(TestSlot s, List<Map<String, Object>> steps, long t) {
+        for (Map<String, Object> step : steps) {
+            long[] w = s.windows.get(step);
+            boolean inside = w != null && w[0] <= t && t <= w[1];
+            // Hook groups have no window of their own: look through them.
+            boolean group = step == s.beforeHooks || step == s.afterHooks;
+            if (!inside && !group) continue;
+            Map<String, Object> deeper = containerAt(s, children(step), t);
+            if (deeper != null) return deeper;
+            if (inside) return step;
+        }
+        return null;
     }
 
     /** Opens a framework hook step (@BeforeMethod, @AfterEach, …). Before-
@@ -399,11 +431,13 @@ public final class RlInternal {
     public static void hookEnd(Step step, Throwable error) {
         if (step == null) return;
         if (OPEN_HOOK.get() == step.data) OPEN_HOOK.remove();
-        long d = Math.max(0, System.currentTimeMillis() - step.start);
+        long now = System.currentTimeMillis();
+        long d = Math.max(0, now - step.start);
         step.data.put("duration", d);
         if (error != null) step.data.put("error", errorSummary(error));
         TestSlot s = currentOrLast();
         if (s != null) {
+            s.windows.put(step.data, new long[] { step.start, now });
             if (s.beforeHooks != null && children(s.beforeHooks).contains(step.data)) bumpGroup(s.beforeHooks, step.data);
             if (s.afterHooks  != null && children(s.afterHooks).contains(step.data))  bumpGroup(s.afterHooks,  step.data);
         }

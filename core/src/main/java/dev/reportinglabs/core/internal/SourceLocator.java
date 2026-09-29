@@ -175,7 +175,9 @@ public final class SourceLocator {
             || c.startsWith("org.testng.") || c.startsWith("org.junit.") || c.startsWith("org.apache.maven.")
             || c.startsWith("org.gradle.") || c.startsWith("dev.reportinglabs.") || c.startsWith("com.microsoft.playwright.")
             || c.startsWith("org.openqa.") || c.startsWith("io.restassured.") || c.startsWith("org.hamcrest.")
-            || c.startsWith("org.assertj.") || c.startsWith("net.bytebuddy.") || c.startsWith("kotlin.");
+            || c.startsWith("org.assertj.") || c.startsWith("net.bytebuddy.") || c.startsWith("kotlin.")
+            || c.startsWith("io.cucumber.") || c.startsWith("org.picocontainer.") || c.startsWith("org.opentest4j.")
+            || c.startsWith("org.codehaus.groovy.") || c.startsWith("org.apache.groovy.") || c.startsWith("groovy.");
     }
 
     /** Resolve a stack frame's class, or null. */
