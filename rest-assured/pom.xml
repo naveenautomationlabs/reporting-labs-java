@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>dev.reportinglabs</groupId>
+    <artifactId>reporting-labs-parent</artifactId>
+    <version>0.1.11</version>
+  </parent>
+
+  <artifactId>reporting-labs-rest-assured</artifactId>
+  <name>reportingLabs (REST Assured)</name>
+  <description>Zero-code REST Assured integration for reportingLabs — add the dependency and every request your tests make lands in the report's API tab with headers, bodies, status and timing, secrets masked.</description>
+  <url>https://reportinglabs.dev</url>
+
+  <dependencies>
+    <dependency>
+      <groupId>dev.reportinglabs</groupId>
+      <artifactId>reporting-labs-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.rest-assured</groupId>
+      <artifactId>rest-assured</artifactId>
+      <scope>provided</scope>
+    </dependency>
+  </dependencies>
+</project>

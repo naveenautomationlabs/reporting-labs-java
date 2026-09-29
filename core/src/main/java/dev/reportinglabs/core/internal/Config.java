@@ -156,6 +156,7 @@ public final class Config {
     /** Selenium add-on: find the WebDriver in the test instance and wire it
      *  automatically (no RlSelenium.attach() call needed). */
     public static boolean seleniumAutoAttach() { return getBool("selenium.autoAttach", true); }
+    public static boolean restAssuredAutoRecord() { return getBool("restassured.autoRecord", true); }
 
     public static String screenshot()   { return normalize(get("screenshot", "on-failure")); }
 

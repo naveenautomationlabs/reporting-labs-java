@@ -10,7 +10,7 @@
   <packaging>pom</packaging>
 
   <name>reportingLabs (parent)</name>
-  <description>Parent POM for reportingLabs Java integrations (core, JUnit 5, TestNG, Playwright).</description>
+  <description>Parent POM for reportingLabs Java integrations (core, JUnit 5, TestNG, Playwright, Selenium, REST Assured).</description>
   <url>https://reportinglabs.dev</url>
   <inceptionYear>2026</inceptionYear>
 
@@ -54,6 +54,7 @@
     <module>testng</module>
     <module>playwright</module>
     <module>selenium</module>
+    <module>rest-assured</module>
   </modules>
 
   <properties>
@@ -66,6 +67,7 @@
     <testng.version>7.10.2</testng.version>
     <playwright.version>1.47.0</playwright.version>
     <selenium.version>4.20.0</selenium.version>
+    <rest-assured.version>5.3.0</rest-assured.version>
   </properties>
 
   <dependencyManagement>
@@ -99,6 +101,11 @@
         <groupId>org.seleniumhq.selenium</groupId>
         <artifactId>selenium-java</artifactId>
         <version>${selenium.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.rest-assured</groupId>
+        <artifactId>rest-assured</artifactId>
+        <version>${rest-assured.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>

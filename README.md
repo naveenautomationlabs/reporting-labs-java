@@ -150,7 +150,7 @@ reportingLabs sits on the framework's `@Test` lifecycle — it does not care wha
 
 - Playwright for Java (auto-capture with `reporting-labs-playwright`)
 - Selenium Java: add `reporting-labs-selenium` and your existing `BaseTest` / `DriverFactory` / page objects are found automatically — steps per action, screenshots per policy
-- REST Assured (`Rl.api("POST", "/v1/orders", 201)`)
+- REST Assured: add `reporting-labs-rest-assured` and every request lands in the API tab with headers, bodies, status and timing, secrets masked
 - Karate, Cucumber (both run under JUnit 5 or TestNG)
 - Plain code, HttpClient, JDBC, whatever
 
