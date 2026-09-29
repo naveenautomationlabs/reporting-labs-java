@@ -1405,11 +1405,16 @@ function projects(){
 /* ---------- main ---------- */
 function main(){
   const projSel = h('select',{id:'projsel',onchange:e=>{state.project=e.target.value;refresh();}}, h('option',{value:'all'},'All projects'), data.projects.map(p=>h('option',{value:p},p)));
+  // Status filter, the same state the Overview pills, the donut legend and the "f" key drive.
+  const counts = {}; for(const t of data.tests){ const k=isFail(t.outcome)?'failed':t.outcome; counts[k]=(counts[k]||0)+1; }
+  const statusSel = h('select',{id:'statussel','aria-label':'Status',onchange:e=>{state.status=e.target.value;refresh();}},
+    h('option',{value:'all'},'Any status'),
+    [['passed','Passed'],['failed','Failed'],['flaky','Flaky'],['skipped','Skipped']].map(([k,l])=>h('option',{value:k},l+(counts[k]?' ('+counts[k]+')':''))));
   return h('div',{class:'main'},
     h('aside',{class:'list'},
       h('div',{class:'tools'}, h('input',{type:'search',placeholder:'Search tests, tags, files…',oninput:e=>{state.q=e.target.value.toLowerCase();refresh();}}), data.projects.length>1?projSel:null,
         h('div',{class:'seg'}, [['file','Spec files'],['folder','Folders'],['flat','Flat']].map(([k,l])=>h('button',{'data-g':k,'aria-pressed':state.group===k,onclick:()=>{state.group=k;refresh();}},l))),
-        DIMS.length? h('div',{class:'dims'}, DIMS.map(d=>h('select',{'data-dim':d,onchange:e=>{state.dims[d]=e.target.value||null;refresh();}}, h('option',{value:''},'Any '+d), dimValues(d).map(v=>h('option',{value:v},v))))) : null),
+        h('div',{class:'dims'}, statusSel, DIMS.map(d=>h('select',{'data-dim':d,onchange:e=>{state.dims[d]=e.target.value||null;refresh();}}, h('option',{value:''},'Any '+d), dimValues(d).map(v=>h('option',{value:v},v)))))),
       h('div',{class:'items',id:'items'}),
       h('div',{class:'hint-kbd'}, h('span',{class:'kbd'},'j'),' / ',h('span',{class:'kbd'},'k'),' next / prev · ',h('span',{class:'kbd'},'f'),' failed only · ',h('span',{class:'kbd'},'/'),' search · ',h('span',{class:'kbd'},'1'),'–',h('span',{class:'kbd'},'5'),' switch view')),
     h('section',{class:'detail',id:'detail'}));
@@ -1428,6 +1433,7 @@ function refresh(){
   document.querySelectorAll('.dim .row').forEach(r=>{ const card=r.closest('.card'); const d=card.querySelector('h2').textContent.replace(/^By /,''); r.setAttribute('aria-pressed', state.dims[d]===r.querySelector('.k').textContent); });
   document.querySelectorAll('select[data-dim]').forEach(sel=>{ sel.value=state.dims[sel.dataset.dim]||''; });
   const ps=$('#projsel'); if(ps) ps.value=state.project;
+  const ss=$('#statussel'); if(ss) ss.value=state.status;
   const vis=visible(), ids=new Set(vis.map(t=>t.id));
   document.querySelectorAll('.cell').forEach(c=>c.classList.toggle('dim',!ids.has(c.dataset.id)));
   const box=$('#items'); box.innerHTML='';
