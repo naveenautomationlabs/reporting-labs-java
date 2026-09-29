@@ -153,13 +153,34 @@ public class ReportingLabsListener implements ITestListener, IConfigurationListe
         List<ITestNGMethod> causedBy = skipCausedBy(tr);
         if (RlInternal.current() == null) begin(tr.getMethod());
         if (!causedBy.isEmpty()) {
-            ITestNGMethod hook = causedBy.get(0);
-            Throwable t = CONFIG_FAILURES.get(hook);
-            RlInternal.endFailedByHook(t != null ? t : new IllegalStateException("configuration method failed"), hookTitle(hook));
+            ITestNGMethod cause = causedBy.get(0);
+            if (cause.isTest()) {
+                // dependsOnMethods / dependsOnGroups: the test it needs failed.
+                // That is a skip with a reason, not a failure of this test.
+                RlInternal.end(null, true, "depends on " + cause.getMethodName() + ", which failed");
+                return;
+            }
+            Throwable t = CONFIG_FAILURES.get(cause);
+            RlInternal.endFailedByHook(t != null ? t : new IllegalStateException("configuration method failed"), hookTitle(cause));
             return;
         }
         if (endRetriedAttempt(tr)) return;
+        String reason = tr.getThrowable() != null ? null : dependsReason(tr.getMethod());
+        if (reason != null) { RlInternal.end(null, true, reason); return; }
         RlInternal.end(tr.getThrowable(), true);
+    }
+
+    /** A skip without a throwable on a method with dependencies: the thing it
+     *  depends on was itself skipped (a chain behind one failure). */
+    private static String dependsReason(ITestNGMethod m) {
+        try {
+            String[] methods = m.getMethodsDependedUpon();
+            String[] groups = m.getGroupsDependedUpon();
+            List<String> names = new ArrayList<>();
+            if (methods != null) for (String s : methods) names.add(s.substring(s.lastIndexOf('.') + 1));
+            if (groups != null) for (String s : groups) names.add("group " + s);
+            return names.isEmpty() ? null : "depends on " + String.join(", ", names) + ", which did not pass";
+        } catch (Throwable t) { return null; }
     }
 
     /** ITestResult.getSkipCausedBy() exists since TestNG 7.0. */

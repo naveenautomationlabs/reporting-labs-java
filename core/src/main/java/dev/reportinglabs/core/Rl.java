@@ -150,4 +150,18 @@ public final class Rl {
     public static boolean shouldCaptureVideo(boolean failed) {
         return Config.shouldCapture(Config.video(), failed);
     }
+
+    // ---- per-tool policies: reporting-labs.<tool>.screenshot / .trace / .video,
+    //      falling back to the plain keys. tool is "selenium", "playwright", ... ----
+
+    public static String screenshotMode(String tool) { return Config.screenshot(tool); }
+    public static String traceMode(String tool)      { return Config.trace(tool); }
+    public static String videoMode(String tool)      { return Config.video(tool); }
+    public static boolean shouldCaptureScreenshot(String tool) {
+        return !RlInternal.currentOrLastSkipped() && shouldCaptureScreenshot(tool, RlInternal.currentOrLastFailed());
+    }
+    public static boolean shouldCaptureScreenshot(String tool, boolean failed) { return Config.shouldCapture(Config.screenshot(tool), failed); }
+    public static boolean shouldCaptureTrace(String tool, boolean failed)      { return Config.shouldCapture(Config.trace(tool), failed); }
+    public static boolean shouldCaptureVideo(String tool, boolean failed)      { return Config.shouldCapture(Config.video(tool), failed);
+    }
 }

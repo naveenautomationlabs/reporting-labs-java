@@ -42,6 +42,8 @@ public final class RlPlaywright {
     /** Every page attached during the current test, in attach order. */
     private static final ThreadLocal<List<Page>> TEST_PAGES = ThreadLocal.withInitial(ArrayList::new);
     private static final Map<Page, PageState> STATES = new ConcurrentHashMap<>();
+    /** Contexts whose onPage hook is already installed (attach(context) is called per test). */
+    private static final Set<BrowserContext> HOOKED_CONTEXTS = Collections.newSetFromMap(Collections.synchronizedMap(new WeakHashMap<>()));
     private static volatile boolean shutdownHooked = false;
     /** Videos to attach once their contexts are closed and the report is written. */
     private static final List<Object[]> PENDING_VIDEOS = Collections.synchronizedList(new ArrayList<>());
@@ -64,7 +66,7 @@ public final class RlPlaywright {
      */
     public static Browser.NewContextOptions contextOptions() {
         Browser.NewContextOptions o = new Browser.NewContextOptions();
-        if (!"never".equals(Rl.videoMode())) {
+        if (!"never".equals(Rl.videoMode("playwright"))) {
             Path dir = Paths.get(dev.reportinglabs.core.internal.Config.outputFolder(), "videos");
             try { Files.createDirectories(dir); } catch (IOException ignore) {}
             o.setRecordVideoDir(dir);
@@ -73,7 +75,7 @@ public final class RlPlaywright {
     }
 
     private static void rememberVideo(Page page) {
-        if ("never".equals(Rl.videoMode())) return;
+        if ("never".equals(Rl.videoMode("playwright"))) return;
         RlInternal.TestSlot slot = RlInternal.currentOrLast();
         if (slot == null) return;
         Video v;
@@ -100,7 +102,7 @@ public final class RlPlaywright {
             RlInternal.TestSlot slot = (RlInternal.TestSlot) pv[0];
             Video v = (Video) pv[1];
             boolean failed = "failed".equals(slot.outcome());
-            boolean wanted = !"skipped".equals(slot.outcome()) && Rl.shouldCaptureVideo(failed);
+            boolean wanted = !"skipped".equals(slot.outcome()) && Rl.shouldCaptureVideo("playwright", failed);
             try {
                 Path src = v.path();
                 if (src == null || !Files.isRegularFile(src)) continue;
@@ -148,7 +150,7 @@ public final class RlPlaywright {
                 RlInternal.TestSlot slot = RlInternal.current();
                 boolean skipped = slot != null && "skipped".equals(slot.outcome());
                 if (skipped) { finish(false, false); return; }   // nothing ran — no artifacts
-                if (Rl.shouldCaptureScreenshot(failed)) screenshotOnFailure();
+                if (Rl.shouldCaptureScreenshot("playwright", failed)) screenshot(failed);
                 finish(failed);
             });
         }
@@ -157,17 +159,19 @@ public final class RlPlaywright {
         PageState st = new PageState(page);
         STATES.put(page, st);
 
-        // API auto-capture: match request → response by request instance
-        page.onRequest(st::onRequest);
-        page.onRequestFinished(st::onRequestFinished);
-        page.onRequestFailed(st::onRequestFailed);
+        // API auto-capture: match request → response by request instance.
+        // The consumers are kept so finish() can remove them: a page shared
+        // across tests is attached once per test and must not record twice.
+        page.onRequest(st.reqStarted);
+        page.onRequestFinished(st.reqFinished);
+        page.onRequestFailed(st.reqFailed);
 
         // Start a trace only if the policy could ever want one (skip when
         // trace=never, so we don't pay the recording cost). Tracing is per
         // BrowserContext: a second page in the same context finds it already
         // running and simply shares it. Whether the trace is attached is
         // decided in finish(failed).
-        if (!"never".equals(Rl.traceMode())) {
+        if (!"never".equals(Rl.traceMode("playwright"))) {
             try {
                 page.context().tracing().start(new Tracing.StartOptions()
                     .setScreenshots(true).setSnapshots(true).setSources(false));
@@ -184,8 +188,38 @@ public final class RlPlaywright {
     public static BrowserContext attach(BrowserContext context) {
         if (context == null) return null;
         for (Page p : context.pages()) attach(p);
-        context.onPage(RlPlaywright::attach);
+        if (HOOKED_CONTEXTS.add(context)) context.onPage(RlPlaywright::attach);
         return context;
+    }
+
+    /**
+     * A {@link Browser} whose contexts and pages are attached as they are
+     * created: {@code newContext()} hooks the context so every page it opens
+     * is recorded, {@code newPage()} attaches the page. Used by the
+     * auto-discovery for a test that keeps only the Browser and creates
+     * pages inside the test body; returns the same object when it is
+     * already instrumented. Everything else delegates unchanged.
+     */
+    public static Browser instrument(Browser browser) {
+        if (browser == null || java.lang.reflect.Proxy.isProxyClass(browser.getClass())) return browser;
+        return (Browser) java.lang.reflect.Proxy.newProxyInstance(
+            Browser.class.getClassLoader(), new Class<?>[] { Browser.class },
+            (proxy, m, args) -> {
+                Object r;
+                try { r = m.invoke(browser, args); } catch (InvocationTargetException e) { throw e.getCause(); }
+                try {
+                    if (r instanceof BrowserContext) attach((BrowserContext) r);
+                    else if (r instanceof Page) { attach(((Page) r).context()); attach((Page) r); }
+                } catch (Throwable ignore) { /* recording never breaks the test */ }
+                return r;
+            });
+    }
+
+    /** Attach every page of every open context of the browser. */
+    public static Browser attach(Browser browser) {
+        if (browser == null) return null;
+        try { for (BrowserContext c : browser.contexts()) attach(c); } catch (Throwable ignore) {}
+        return browser;
     }
 
     /**
@@ -385,10 +419,28 @@ public final class RlPlaywright {
         } catch (Throwable ignore) { return null; }
     }
 
+    /** For a page discovered only when the test is already ending (created
+     *  inside the test body, found by the auto-discovery's last scan): no
+     *  listeners, no trace, just the screenshot the policy asks for. */
+    public static void captureNow(Page page) {
+        RlInternal.TestSlot slot = RlInternal.current();
+        if (page == null || slot == null || STATES.containsKey(page)) return;
+        boolean failed = "failed".equals(slot.outcome());
+        if ("skipped".equals(slot.outcome()) || !Rl.shouldCaptureScreenshot("playwright", failed)) return;
+        try {
+            if (page.isClosed()) return;
+            byte[] png = page.screenshot(new Page.ScreenshotOptions().setFullPage(true));
+            RlInternal.attachAuto(failed ? "failure.png" : "screen.png", "image/png", png);
+        } catch (Throwable ignore) {}
+    }
+
     /** Takes a full-page screenshot of the current test's most recent page
      *  that is still open and attaches it. Called by the framework binding
      *  when the capture policy says so; safe to call yourself. */
-    public static void screenshotOnFailure() {
+    public static void screenshotOnFailure() { screenshot(true); }
+
+    /** failure.png on a failed test, screen.png otherwise (policy always / only-on-pass). */
+    private static void screenshot(boolean failed) {
         if (RlInternal.currentOrLast() == null) return;
         List<Page> pages = TEST_PAGES.get();
         for (int i = pages.size() - 1; i >= 0; i--) {
@@ -396,7 +448,7 @@ public final class RlPlaywright {
             try {
                 if (p.isClosed()) continue;
                 byte[] png = p.screenshot(new Page.ScreenshotOptions().setFullPage(true));
-                Rl.attach("failure.png", "image/png", png);
+                RlInternal.attachAuto(failed ? "failure.png" : "screen.png", "image/png", png);
                 return;
             } catch (Throwable ignore) { /* try an earlier page */ }
         }
@@ -406,7 +458,7 @@ public final class RlPlaywright {
      *  page of the test, attaches the trace only if the policy says so, and
      *  detaches the pages. */
     public static void finish() { finish(false); }
-    public static void finish(boolean failed) { finish(failed, Rl.shouldCaptureTrace(failed)); }
+    public static void finish(boolean failed) { finish(failed, Rl.shouldCaptureTrace("playwright", failed)); }
 
     private static void finish(boolean failed, boolean attachTrace) {
         List<Page> pages = TEST_PAGES.get();
@@ -437,6 +489,9 @@ public final class RlPlaywright {
         final Page page;
         boolean tracing;
         final Map<Request, Long> starts = new ConcurrentHashMap<>();
+        final java.util.function.Consumer<Request> reqStarted = this::onRequest;
+        final java.util.function.Consumer<Request> reqFinished = this::onRequestFinished;
+        final java.util.function.Consumer<Request> reqFailed = this::onRequestFailed;
 
         PageState(Page page) { this.page = page; }
 
@@ -475,6 +530,8 @@ public final class RlPlaywright {
         /** Stops the trace unconditionally (so recording buffers don't
          *  leak) and attaches the zip only if the caller asked for it. */
         void finish(boolean attachTrace) {
+            try { page.offRequest(reqStarted); page.offRequestFinished(reqFinished); page.offRequestFailed(reqFailed); }
+            catch (Throwable ignore) { /* page already closed */ }
             if (tracing) {
                 try {
                     if (attachTrace) {

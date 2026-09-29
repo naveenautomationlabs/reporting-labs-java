@@ -83,7 +83,8 @@ public final class SourceLocator {
     public static int lineOf(Class<?> cls, String method) {
         Path p = fileOf(cls);
         if (p == null || method == null) return 0;
-        Pattern decl = Pattern.compile("^\\s*(?:(?:public|protected|private|static|final|synchronized|default|abstract)\\s+)*[\\w$<>\\[\\],.? ]+\\s+" + Pattern.quote(method) + "\\s*\\(");
+        // Annotations may sit on the same line: "@Test public void x()".
+        Pattern decl = Pattern.compile("^\\s*(?:@[\\w.]+(?:\\([^)]*\\))?\\s+)*(?:(?:public|protected|private|static|final|synchronized|default|abstract)\\s+)*[\\w$<>\\[\\],.? ]+\\s+" + Pattern.quote(method) + "\\s*\\(");
         List<String> ls = lines(p);
         for (int i = 0; i < ls.size(); i++) {
             String l = ls.get(i);

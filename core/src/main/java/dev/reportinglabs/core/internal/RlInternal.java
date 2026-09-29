@@ -428,7 +428,10 @@ public final class RlInternal {
             (err ? PENDING_STDERR : PENDING_STDOUT).get().add(text);
             return;
         }
-        if (s == null) s = LAST_ENDED.get();
+        // After a test ended, only lines printed by its own after-hooks belong
+        // to it; the framework's own chatter (TestNG's "PASSED: …" summary)
+        // printed later on this thread does not.
+        if (s == null && OPEN_HOOK.get() != null) s = LAST_ENDED.get();
         if (s == null) return;
         List<String> target = err ? s.stderr : s.stdout;
         if (target.size() < MAX_CONSOLE_LINES) target.add(text);

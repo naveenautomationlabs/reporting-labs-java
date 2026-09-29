@@ -59,7 +59,7 @@ public final class SeleniumIntegration implements RlIntegration {
         if (RlSelenium.currentDriver() == null) return;
         // attachAuto: a screen.png the user attaches themselves (e.g. in an
         // @AfterMethod that runs after this) replaces ours instead of doubling.
-        if (Rl.shouldCaptureScreenshot()) RlSelenium.autoScreenshot("screen.png");
+        if (Rl.shouldCaptureScreenshot("selenium")) RlSelenium.autoScreenshot("screen.png");
     }
 
     private static void scan(Object obj, int depth, Set<Object> seen) {
@@ -91,10 +91,11 @@ public final class SeleniumIntegration implements RlIntegration {
                 }
             }
         }
-        // Statics of the test class hierarchy too (DriverFactory-style holders).
+        // Statics too: of the test class hierarchy and of every class it
+        // reaches (a DriverFactory with a static ThreadLocal<WebDriver> that
+        // the test only ever calls as DriverFactory.getDriver()).
         if (depth == 0) {
-            for (Class<?> c = obj.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
-                if (!userClass(c)) break;
+            for (Class<?> c : dev.reportinglabs.core.internal.ClassRefs.reachable(obj.getClass(), SeleniumIntegration::userClass)) {
                 for (Field f : c.getDeclaredFields()) {
                     if (!Modifier.isStatic(f.getModifiers()) || f.isSynthetic()) continue;
                     Object v;

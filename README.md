@@ -13,7 +13,7 @@ Seven Maven artifacts, all under the `dev.reportinglabs` groupId. Pick the one f
 | `reporting-labs-junit5` | JUnit 5 extension, auto-registered via ServiceLoader |
 | `reporting-labs-selenium` | Zero code: finds the WebDriver on your test instance, records every open/click/type as a step, screenshots per policy |
 | `reporting-labs-rest-assured` | Zero code: registers a recording filter, every request lands in the API tab with headers, bodies, status and timing |
-| `reporting-labs-playwright` | One line, `RlPlaywright.attach(page)`: API calls, trace, screenshot and video per policy |
+| `reporting-labs-playwright` | Zero code: finds the Page, BrowserContext, Browser or APIRequestContext on your test instance; API calls, trace, screenshot and video per policy |
 | `reporting-labs-cucumber` | Cucumber JVM plugin: one row per scenario, named after it, at its feature-file line, with Given/When/Then as steps. TestNG runner or JUnit Platform engine |
 | `reporting-labs-core` | Engine, annotations, `Rl.*` helpers. Comes with the two above; use it alone from plain code |
 
@@ -29,7 +29,7 @@ Step by step, with screenshots, per tool: [Selenium](https://reportinglabs.dev/g
 <dependency>
   <groupId>dev.reportinglabs</groupId>
   <artifactId>reporting-labs-testng</artifactId>
-  <version>0.1.13</version>
+  <version>0.1.14</version>
   <scope>test</scope>
 </dependency>
 ```
@@ -42,7 +42,7 @@ Nothing to register: the listener is found through ServiceLoader. If you keep a 
 <dependency>
   <groupId>dev.reportinglabs</groupId>
   <artifactId>reporting-labs-junit5</artifactId>
-  <version>0.1.13</version>
+  <version>0.1.14</version>
   <scope>test</scope>
 </dependency>
 ```
@@ -86,23 +86,18 @@ cucumber.plugin=dev.reportinglabs.cucumber.ReportingLabsPlugin
 
 Every scenario is one row named after the scenario, at `orders.feature:13`, with the Gherkin steps (Background included) as steps, `@Before`/`@After` hooks in the hook groups, data tables and doc strings as data blocks, Scenario Outline rows titled with their example values. Tags become filters: `@P1` is the priority, `@blocker` the severity, `@owner:naveen` an owner chip, everything else a tag. An undefined step points at the feature line, and the steps after a failure show as "not run". With the TestNG runner add `reporting-labs-testng` as usual; with the JUnit Platform engine the plugin alone is enough. Selenium and REST Assured add-ons work inside step definitions unchanged.
 
-## Playwright for Java: one line
+## Playwright for Java: zero code
+
+Add `reporting-labs-playwright`. Your `BaseTest`, `PlaywrightFactory` and page objects stay as they are: the `Page` (or `BrowserContext`, `Browser`, `APIRequestContext`) is found on the test instance, in a base class, a page object, a factory or a `ThreadLocal`, static holders included, and wired for API capture, trace and screenshot per policy. An `APIRequestContext` field is swapped for a recording wrapper, so API-only tests get the API tab too.
+
+Two things still take a line, because the object never sits on the test:
 
 ```java
-import dev.reportinglabs.playwright.RlPlaywright;
-import com.microsoft.playwright.*;
-
-@BeforeEach
-void setup() {
-  playwright = Playwright.create();
-  browser    = playwright.chromium().launch();
-  context    = browser.newContext(RlPlaywright.contextOptions());   // records video when the policy asks for it
-  page       = context.newPage();
-  RlPlaywright.attach(page);                                        // API calls, trace, screenshot per policy
-}
+context = browser.newContext(RlPlaywright.contextOptions());   // video: Playwright decides at context creation
+APIRequestContext api = RlPlaywright.record(page.request());   // page.request() inside a test body
 ```
 
-`RlPlaywright.record(page.request())` records `APIRequestContext` calls too. Popups: `RlPlaywright.attach(context)` wires every future page.
+`RlPlaywright.attach(page)` / `attach(context)` remain for a page kept somewhere the discovery cannot see. `reporting-labs.playwright.autoAttach=false` turns the discovery off.
 
 ## A first test
 
@@ -175,11 +170,18 @@ reporting-labs.title=Nightly regression
 reporting-labs.project.name=ShopLite Web
 reporting-labs.metadata.env=staging
 reporting-labs.links.story=https://shoplite.atlassian.net/browse/{id}
-# never | on-failure | always | only-on-pass
-reporting-labs.screenshot=on-failure
-reporting-labs.trace=on-failure
-reporting-labs.video=never
 reporting-labs.maskKeys=otp,pan
+
+# Selenium: never | on-failure | always | only-on-pass
+reporting-labs.selenium.screenshot=on-failure
+
+# Playwright
+reporting-labs.playwright.screenshot=on-failure
+reporting-labs.playwright.trace=on-failure
+reporting-labs.playwright.video=never
+
+# REST Assured
+reporting-labs.restassured.autoRecord=true
 ```
 
 Comments go on their own line; `java.util.Properties` has no inline comments.

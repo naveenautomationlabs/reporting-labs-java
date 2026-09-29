@@ -157,6 +157,8 @@ public final class Config {
      *  automatically (no RlSelenium.attach() call needed). */
     public static boolean seleniumAutoAttach() { return getBool("selenium.autoAttach", true); }
     public static boolean restAssuredAutoRecord() { return getBool("restassured.autoRecord", true); }
+    /** Playwright add-on: find Page / BrowserContext / APIRequestContext on the test instance and attach them. */
+    public static boolean playwrightAutoAttach() { return getBool("playwright.autoAttach", true); }
 
     public static String screenshot()   { return normalize(get("screenshot", "on-failure")); }
 
@@ -169,6 +171,12 @@ public final class Config {
      *  who record their own videos. The library never records; users attach
      *  bytes via Rl.attach(). Same values as `screenshot`. */
     public static String video()        { return normalize(get("video", "off")); }
+
+    /** Per-tool policies: reporting-labs.playwright.screenshot,
+     *  reporting-labs.selenium.screenshot, ... fall back to the plain key. */
+    public static String screenshot(String tool) { String v = get(tool + ".screenshot", null); return v != null ? normalize(v) : screenshot(); }
+    public static String trace(String tool)      { String v = get(tool + ".trace", null);      return v != null ? normalize(v) : trace(); }
+    public static String video(String tool)      { String v = get(tool + ".video", null);      return v != null ? normalize(v) : video(); }
 
     private static String normalize(String v) {
         if (v == null) return "off";
@@ -211,7 +219,20 @@ public final class Config {
     public static Map<String, String> links()    { return prefixMap("links."); }
 
     /** Extra key/value rows for the Environment card. */
-    public static Map<String, String> env()      { return prefixMap("env."); }
+    public static Map<String, String> env() {
+        // java.util.Properties ends a key at the first space, so
+        // "reporting-labs.env.App version=2.4.0" arrives as App -> "version=2.4.0".
+        // Put the label back together when the value looks like that.
+        Map<String, String> raw = prefixMap("env.");
+        Map<String, String> out = new java.util.LinkedHashMap<>();
+        for (Map.Entry<String, String> e : raw.entrySet()) {
+            String k = e.getKey(), v = e.getValue() == null ? "" : e.getValue();
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("^([A-Za-z][\\w-]*)=(.*)$").matcher(v);
+            if (!k.contains(" ") && m.matches()) { k = k + " " + m.group(1); v = m.group(2); }
+            out.put(k, v);
+        }
+        return out;
+    }
 
     /** project.name / project.version / project.team / project.url / project.description */
     public static Map<String, Object> project() {

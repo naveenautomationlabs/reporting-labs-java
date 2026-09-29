@@ -125,7 +125,7 @@ public final class RlSelenium {
             // when it is loaded; this covers manual attach() without it.
             RlInternal.addEndListener(slot -> {
                 if (ACTIVE.get() == null || SeleniumIntegration.loaded) return;
-                if (Rl.shouldCaptureScreenshot()) autoScreenshot("screen.png");
+                if (Rl.shouldCaptureScreenshot("selenium")) autoScreenshot("screen.png");
             });
         }
     }
