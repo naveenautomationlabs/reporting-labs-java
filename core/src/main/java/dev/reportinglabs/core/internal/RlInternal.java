@@ -348,6 +348,18 @@ public final class RlInternal {
         if (s != null && s.openSteps.peek() == step.data) s.openSteps.pop();
     }
 
+    /** Appends an already-finished step (an action read back from a
+     *  Playwright trace) to the running or just-ended test. */
+    public static void recordStep(String title, String category, long durationMs, String error) {
+        TestSlot s = currentOrLast();
+        if (s == null) return;
+        Map<String, Object> m = newStep(title, category);
+        m.put("duration", Math.max(0, durationMs));
+        if (error != null && !error.isEmpty()) m.put("error", MASKER.maskText(error));
+        Map<String, Object> parent = s.openSteps.peek();
+        (parent != null ? children(parent) : s.steps).add(m);
+    }
+
     /** Opens a framework hook step (@BeforeMethod, @AfterEach, …). Before-
      *  hooks go to the running test's "Before Hooks" group, or wait for the
      *  next test when none is open yet; after-hooks go to the test that just

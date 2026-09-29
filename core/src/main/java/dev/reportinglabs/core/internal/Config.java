@@ -159,6 +159,8 @@ public final class Config {
     public static boolean restAssuredAutoRecord() { return getBool("restassured.autoRecord", true); }
     /** Playwright add-on: find Page / BrowserContext / APIRequestContext on the test instance and attach them. */
     public static boolean playwrightAutoAttach() { return getBool("playwright.autoAttach", true); }
+    /** Playwright add-on: turn the actions recorded in the Playwright trace into steps. */
+    public static boolean playwrightSteps() { return getBool("playwright.steps", true); }
 
     public static String screenshot()   { return normalize(get("screenshot", "on-failure")); }
 

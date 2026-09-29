@@ -12,7 +12,7 @@ Seven Maven artifacts, all under the `dev.reportinglabs` groupId. Pick the one f
 | `reporting-labs-testng` | Framework binding for TestNG. Listener found through ServiceLoader, nothing to register |
 | `reporting-labs-junit5` | Framework binding for JUnit 5. Extension found through the JUnit Platform, one property |
 | `reporting-labs-selenium` | Zero code. Finds the WebDriver on your test (fields, base class, page objects, factory, `ThreadLocal`), records every open, click and type as a step, screenshot per policy. Appium drivers too |
-| `reporting-labs-playwright` | Zero code. Finds the `Page`, `BrowserContext`, `Browser` or `APIRequestContext` on your test the same way: trace, screenshot and video per policy for UI tests, every request and response for API tests |
+| `reporting-labs-playwright` | Zero code. Finds the `Page`, `BrowserContext`, `Browser` or `APIRequestContext` on your test the same way: every action as a step, trace, screenshot and video per policy for UI tests, every request and response for API tests |
 | `reporting-labs-rest-assured` | Zero code. Registers a recording filter; every request lands in the API tab with headers, bodies, status and timing |
 | `reporting-labs-cucumber` | One property. A row per scenario at its feature-file line, Given/When/Then as steps, tags as filters. TestNG runner or JUnit Platform engine |
 | `reporting-labs-core` | Engine, annotations, `Rl.*` helpers. Comes with the bindings; use it alone from plain code |
@@ -60,7 +60,7 @@ Run `mvn test`. Open `target/reporting-labs/index.html` (Gradle: `build/reportin
 ## What the report shows
 
 - Every test with its real source line (`OrdersApiTest.java:42`); on failure the failing line, a code snippet and a plain-language reading of the error (element not found, assertion with expected/actual, site unreachable, test timed out, hook failed), for Playwright, Selenium, TestNG, JUnit and AssertJ errors.
-- Before/After hooks with timings, `Rl.step()` groups, Selenium actions, `System.out` / `System.err` lines, retries grouped as attempts and marked flaky, DataProvider rows as Parameters.
+- Before/After hooks with timings, `Rl.step()` groups, Selenium and Playwright actions, `System.out` / `System.err` lines, retries grouped as attempts and marked flaky, DataProvider rows as Parameters.
 - API calls with headers, bodies and Copy as cURL. Screenshots, traces and videos per policy.
 - Secrets masked everywhere: headers, bodies, log lines, console output, data blocks, error messages, even `"password", "x"` literals in a code snippet.
 - Trend, new vs known failures, flaky history and got-slower across runs, from `reporting-labs.history.json`.
@@ -81,7 +81,7 @@ The framework binding hands the test instance to every add-on on the classpath w
 What it does with them:
 
 - Selenium: the `WebDriver` is wrapped with a step recorder and the field is pointed at the wrapper, so page objects built from it record too. Concrete-typed fields (`ChromeDriver driver`) keep the raw driver; screenshots still work.
-- Playwright: a `Page` gets a trace and a screenshot per policy; a `BrowserContext` covers its current and future pages; a `Browser` covers every context and is instrumented so pages created inside the test body are attached; an `APIRequestContext` field is swapped for a recording wrapper, so API tests get the API tab. The page's own network traffic (fonts, images, scripts) is not recorded as API calls, same as the Node.js reporter; the trace has it.
+- Playwright: a `Page` gets every action as a step (read back from Playwright's own trace at the end of the test, so nothing is wrapped and `assertThat(page)` keeps working), a trace and a screenshot per policy; a `BrowserContext` covers its current and future pages; a `Browser` covers every context and is instrumented so pages created inside the test body are attached; an `APIRequestContext` field is swapped for a recording wrapper, so API tests get the API tab. The page's own network traffic (fonts, images, scripts) is not recorded as API calls, same as the Node.js reporter; the trace has it.
 
 If an object lives somewhere the scan cannot reach (a local variable in a helper, a class outside your own packages) attach it by hand once: `RlSelenium.attach(driver)`, `RlPlaywright.attach(page)`, `RlPlaywright.attach(context)`, `RlPlaywright.record(apiContext)`. Attaching an object the scan already found is harmless. `reporting-labs.selenium.autoAttach=false` / `reporting-labs.playwright.autoAttach=false` turn the discovery off.
 
@@ -91,7 +91,7 @@ Add `reporting-labs-selenium`. Your `BaseTest`, `DriverFactory` and page objects
 
 ## Playwright for Java: zero code
 
-Add `reporting-labs-playwright`. Your `BaseTest`, `PlaywrightFactory` and page objects stay as they are: the `Page` (or `BrowserContext`, `Browser`, `APIRequestContext`) is found on the test instance, in a base class, a page object, a factory or a `ThreadLocal`, static holders included, and wired for trace and screenshot per policy. An `APIRequestContext` field is swapped for a recording wrapper, so API tests get the API tab with every request and response. Page traffic (fonts, images, scripts) stays out of the API tab.
+Add `reporting-labs-playwright`. Your `BaseTest`, `PlaywrightFactory` and page objects stay as they are: the `Page` (or `BrowserContext`, `Browser`, `APIRequestContext`) is found on the test instance, in a base class, a page object, a factory or a `ThreadLocal`, static holders included, and wired for steps, trace and screenshot per policy: every `navigate`, `fill`, `click` and `expect` as a timed step with the failing one in red, values typed into password fields as ••••. An `APIRequestContext` field is swapped for a recording wrapper, so API tests get the API tab with every request and response. Page traffic (fonts, images, scripts) stays out of the API tab.
 
 Two things still take a line, because the object never sits on the test:
 
@@ -120,7 +120,7 @@ Every scenario is one row named after the scenario, at `orders.feature:13`, with
 
 ## A typical framework, unchanged
 
-This is the shape most Java suites have. Nothing in it mentions reportingLabs, and it produces the full report: hooks with timings, the failing line and snippet, `failure.png` and `trace.zip` on the failed test.
+This is the shape most Java suites have. Nothing in it mentions reportingLabs, and it produces the full report: hooks with timings, every action as a step, the failing line and snippet, `failure.png` and `trace.zip` on the failed test.
 
 ```java
 public class BaseTest {
@@ -228,6 +228,7 @@ reporting-labs.maskKeys=otp,pan
 reporting-labs.selenium.screenshot=on-failure
 
 # Playwright
+reporting-labs.playwright.steps=true
 reporting-labs.playwright.screenshot=on-failure
 reporting-labs.playwright.trace=on-failure
 reporting-labs.playwright.video=never

@@ -11,6 +11,10 @@ import java.util.*;
  * (circular refs, custom object graphs) to keep the surface small and safe.
  */
 public final class Json {
+
+    /** Parses one JSON document into Map / List / String / Double / Boolean / null. */
+    public static Object parse(String text) { return new JsonReader(text).read(); }
+
     private Json() {}
 
     public static String write(Object v) {

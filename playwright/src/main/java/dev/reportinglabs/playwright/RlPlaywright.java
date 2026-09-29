@@ -161,16 +161,21 @@ public final class RlPlaywright {
         PageState st = new PageState(page);
         STATES.put(page, st);
 
-        // Start a trace only if the policy could ever want one (skip when
-        // trace=never, so we don't pay the recording cost). Tracing is per
+        // Tracing serves two things: the trace.zip the policy may want, and
+        // the step list (every action the test made, read back from the
+        // trace at the end). With trace=never a lightweight trace without
+        // screenshots or snapshots still runs for the steps, unless
+        // reporting-labs.playwright.steps=false. Tracing is per
         // BrowserContext: a second page in the same context finds it already
-        // running and simply shares it. Whether the trace is attached is
-        // decided in finish(failed).
-        if (!"never".equals(Rl.traceMode("playwright"))) {
+        // running and simply shares it.
+        boolean wantTrace = !"never".equals(Rl.traceMode("playwright"));
+        boolean wantSteps = dev.reportinglabs.core.internal.Config.playwrightSteps();
+        if (wantTrace || wantSteps) {
             try {
                 page.context().tracing().start(new Tracing.StartOptions()
-                    .setScreenshots(true).setSnapshots(true).setSources(false));
+                    .setScreenshots(wantTrace).setSnapshots(wantTrace).setSources(false));
                 st.tracing = true;
+                st.fullTrace = wantTrace;
             } catch (Throwable ignore) { /* older Playwright, or already tracing */ }
         }
 
@@ -444,10 +449,14 @@ public final class RlPlaywright {
                 if (p.isClosed()) continue;
                 byte[] png = p.screenshot(new Page.ScreenshotOptions().setFullPage(true));
                 RlInternal.attachAuto(failed ? "failure.png" : "screen.png", "image/png", png);
+                OWN_SCREENSHOT.set(Boolean.TRUE);
                 return;
             } catch (Throwable ignore) { /* try an earlier page */ }
         }
     }
+
+    /** Set while our own end-of-test screenshot is the last call in the trace, so it is not listed as a step. */
+    private static final ThreadLocal<Boolean> OWN_SCREENSHOT = ThreadLocal.withInitial(() -> Boolean.FALSE);
 
     /** Called when the test finishes (pass or fail) — stops tracing on every
      *  page of the test, attaches the trace only if the policy says so, and
@@ -483,23 +492,26 @@ public final class RlPlaywright {
     private static final class PageState {
         final Page page;
         boolean tracing;
+        boolean fullTrace;
         PageState(Page page) { this.page = page; }
 
         /** Stops the trace unconditionally (so recording buffers don't
-         *  leak) and attaches the zip only if the caller asked for it. */
+         *  leak), turns its actions into steps, and attaches the zip only
+         *  if the caller asked for it and it is a full trace. */
         void finish(boolean attachTrace) {
             if (tracing) {
+                Path zip = null;
                 try {
-                    if (attachTrace) {
-                        Path zip = Files.createTempFile("rl-trace-", ".zip");
-                        page.context().tracing().stop(new Tracing.StopOptions().setPath(zip));
-                        byte[] bytes = Files.readAllBytes(zip);
-                        Rl.attach("trace.zip", "application/zip", bytes);
-                        try { Files.deleteIfExists(zip); } catch (IOException ignore) {}
-                    } else {
-                        page.context().tracing().stop();
+                    zip = Files.createTempFile("rl-trace-", ".zip");
+                    page.context().tracing().stop(new Tracing.StopOptions().setPath(zip));
+                    if (dev.reportinglabs.core.internal.Config.playwrightSteps()) {
+                        boolean own = OWN_SCREENSHOT.get();
+                        OWN_SCREENSHOT.set(Boolean.FALSE);
+                        TraceSteps.record(zip, own);
                     }
+                    if (attachTrace && fullTrace) Rl.attach("trace.zip", "application/zip", Files.readAllBytes(zip));
                 } catch (Throwable ignore) { /* tracing may not be supported */ }
+                finally { if (zip != null) try { Files.deleteIfExists(zip); } catch (IOException ignore) {} }
                 tracing = false;
             }
         }
