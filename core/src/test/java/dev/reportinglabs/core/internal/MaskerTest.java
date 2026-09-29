@@ -69,4 +69,12 @@ class MaskerTest {
         Object out = m.apply(java.util.Collections.singletonMap("note", "password=" + PW));
         assertEquals("{note=password=****}", out.toString());
     }
+
+    @Test void cardNumbersAndCardKeys() {
+        Masker m = new Masker(java.util.Collections.emptyList());
+        assertEquals("{\"sku\":\"A\",\"cardNumber\":\"****\"}", m.maskText("{\"sku\":\"A\",\"cardNumber\":\"4111111111111111\"}"));
+        assertEquals("paid with **** today", m.maskText("paid with 4111 1111 1111 1111 today"));
+        assertEquals("order 1234567890123 shipped", m.maskText("order 1234567890123 shipped"));   // fails Luhn: left alone
+        assertEquals("pan=****", m.maskText("pan=5555555555554444"));
+    }
 }

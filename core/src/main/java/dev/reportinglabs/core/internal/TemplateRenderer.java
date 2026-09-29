@@ -52,7 +52,22 @@ public final class TemplateRenderer {
         out = replaceOrInjectStyle(out, P_ACCENT_CSS, accentCss);
         out = replaceOrInjectStyle(out, P_CUSTOM_CSS, customCssOut);
         out = replaceOnce(out, P_DATA, json);
+        if (!Config.embedFonts()) out = dropEmbeddedFonts(out);
         return out;
+    }
+
+    /** The snapshot carries IBM Plex as base64 (about 130 KB). With
+     *  reporting-labs.embedFonts=false the report links Google Fonts instead,
+     *  exactly what the Node.js reporter emits for the same option. */
+    private static final java.util.regex.Pattern FONT_BLOCK =
+        java.util.regex.Pattern.compile("<style>@font-face[\\s\\S]*?</style>");
+    private static final String GOOGLE_FONTS =
+        "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n"
+      + "<link href=\"https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap\" rel=\"stylesheet\">";
+
+    static String dropEmbeddedFonts(String html) {
+        java.util.regex.Matcher m = FONT_BLOCK.matcher(html);
+        return m.find() ? html.substring(0, m.start()) + GOOGLE_FONTS + html.substring(m.end()) : html;
     }
 
     private static String replaceOrInjectStyle(String html, String needle, String css) {

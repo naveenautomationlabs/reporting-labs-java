@@ -160,6 +160,16 @@ public final class RlPlaywright {
 
         PageState st = new PageState(page);
         STATES.put(page, st);
+        // Closed inside the test body (a try-with-resources around the
+        // browser): stop the trace now, while the context still exists, so
+        // the steps are not lost. finish() then finds nothing left to stop.
+        page.onClose(p -> {
+            if (RlInternal.current() == null) return;
+            // Tracing is per context: only stop it when this was the context's
+            // last open page (a popup closing must not end the main page's trace).
+            try { if (p.context().pages().stream().anyMatch(o -> o != p && !o.isClosed())) return; } catch (Throwable t) { return; }
+            st.stopEarly();
+        });
 
         // Tracing serves two things: the trace.zip the policy may want, and
         // the step list (every action the test made, read back from the
@@ -495,10 +505,30 @@ public final class RlPlaywright {
         boolean fullTrace;
         PageState(Page page) { this.page = page; }
 
+        byte[] earlyZip;
+
+        /** The page closed mid-test: stop tracing now and keep the zip for finish(). */
+        synchronized void stopEarly() {
+            if (!tracing) return;
+            Path zip = null;
+            try {
+                zip = Files.createTempFile("rl-trace-", ".zip");
+                page.context().tracing().stop(new Tracing.StopOptions().setPath(zip));
+                if (dev.reportinglabs.core.internal.Config.playwrightSteps()) TraceSteps.record(zip, false);
+                earlyZip = fullTrace ? Files.readAllBytes(zip) : null;
+            } catch (Throwable ignore) { /* context already gone */ }
+            finally { if (zip != null) try { Files.deleteIfExists(zip); } catch (IOException ignore) {} }
+            tracing = false;
+        }
+
         /** Stops the trace unconditionally (so recording buffers don't
          *  leak), turns its actions into steps, and attaches the zip only
          *  if the caller asked for it and it is a full trace. */
-        void finish(boolean attachTrace) {
+        synchronized void finish(boolean attachTrace) {
+            if (earlyZip != null) {
+                if (attachTrace) Rl.attach("trace.zip", "application/zip", earlyZip);
+                earlyZip = null;
+            }
             if (tracing) {
                 Path zip = null;
                 try {

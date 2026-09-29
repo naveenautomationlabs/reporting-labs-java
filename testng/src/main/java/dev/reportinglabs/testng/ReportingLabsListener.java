@@ -165,9 +165,16 @@ public class ReportingLabsListener implements ITestListener, IConfigurationListe
             return;
         }
         if (endRetriedAttempt(tr)) return;
-        String reason = tr.getThrowable() != null ? null : dependsReason(tr.getMethod());
+        Throwable why = tr.getThrowable();
+        String reason = null;
+        if (why == null || (why.getMessage() != null && why.getMessage().contains("depends on not successfully finished methods"))) reason = dependsReason(tr.getMethod());
+        if (reason == null && why != null) {
+            // TestNG skips the rest of the class after an @After* method failed: say which one.
+            for (Map.Entry<ITestNGMethod, Throwable> e : CONFIG_FAILURES.entrySet())
+                if (e.getValue() == why) { reason = hookTitle(e.getKey()) + " failed: " + dev.reportinglabs.core.internal.ErrorExplainer.displayMessage(why); break; }
+        }
         if (reason != null) { RlInternal.end(null, true, reason); return; }
-        RlInternal.end(tr.getThrowable(), true);
+        RlInternal.end(why, true);
     }
 
     /** A skip without a throwable on a method with dependencies: the thing it

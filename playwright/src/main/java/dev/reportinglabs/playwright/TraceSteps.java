@@ -114,7 +114,7 @@ final class TraceSteps {
             case "isDisabled":      return "is " + sel + " disabled";
             case "isChecked":       return "is " + sel + " checked";
             case "isEditable":      return "is " + sel + " editable";
-            case "count":           return "count " + sel;
+            case "count": case "queryCount": return "count " + sel;
             case "boundingBox":     return "bounding box of " + sel;
             case "querySelector": case "querySelectorAll": return "find " + sel;
             case "screenshot":      return "screenshot";

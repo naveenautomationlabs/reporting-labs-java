@@ -59,6 +59,21 @@ public final class Masker {
         Pattern.compile("\\bSG\\.[A-Za-z0-9_-]{16,}\\.[A-Za-z0-9_-]{16,}\\b"),                         // SendGrid
     };
     /** Words after "password is ..." that are plainly not a secret. */
+    /** 13 to 19 digits, spaces or dashes between groups allowed; masked only when the Luhn check passes. */
+    private static final Pattern CARD_NUMBER = Pattern.compile("(?<![\\w.-])\\d(?:[ -]?\\d){12,18}(?![\\w.-])");
+
+    private static boolean luhn(String s) {
+        int sum = 0; boolean dbl = false; int digits = 0;
+        for (int i = s.length() - 1; i >= 0; i--) {
+            char c = s.charAt(i);
+            if (c < '0' || c > '9') continue;
+            int d = c - '0'; digits++;
+            if (dbl) { d *= 2; if (d > 9) d -= 9; }
+            sum += d; dbl = !dbl;
+        }
+        return digits >= 13 && sum % 10 == 0;
+    }
+
     private static final Set<String> NOT_A_SECRET = new HashSet<>(Arrays.asList(
         "valid", "invalid", "visible", "hidden", "required", "optional", "missing", "empty", "null", "none",
         "correct", "incorrect", "wrong", "right", "expired", "set", "unset", "not", "present", "absent", "ok", "true", "false",
@@ -80,7 +95,7 @@ public final class Masker {
         List<String> spokenKeys = new ArrayList<>(Arrays.asList("password", "passwd", "pwd", "passcode", "secret", "token",
             "api[ _-]?key", "access[ _-]?key", "otp", "pin", "cvv"));
         if (extra != null) for (String k : extra) { compound.add(quote(k)); spokenKeys.add(quote(k)); }
-        String key = "(?:[\\w.-]*?(?:" + String.join("|", compound) + ")[\\w-]*|authorization|auth|otp|pin|cvv|ssn)";
+        String key = "(?:[\\w.-]*?(?:" + String.join("|", compound) + ")[\\w-]*|authorization|auth|otp|pin|cvv|cvc|ssn|pan|iban|card|card[_-]?(?:number|no|num)|cardnumber)";
         keyValue = Pattern.compile("([\"']?)\\b(" + key + ")\\b([\"']?)(\\s*(?:=>|->|[=:])\\s*)([\"']?)([^\"'\\s&;,}\\]\\)]+)", Pattern.CASE_INSENSITIVE);
         // Code and map literals: ("#password", "x") / Map.of("password", "x") — a quoted key, a comma, a quoted value.
         quotedPair = Pattern.compile("([\"'])#?(" + key + ")\\1(\\s*,\\s*)([\"'])([^\"']+)\\4", Pattern.CASE_INSENSITIVE);
@@ -109,6 +124,7 @@ public final class Masker {
     public String maskText(String text) {
         if (text == null || text.isEmpty()) return text;
         String s = text;
+        s = replace(CARD_NUMBER, s, m -> luhn(m.group()) ? "****" : m.group());
         for (Pattern p : VALUE_PATTERNS) {
             s = replace(p, s, m -> m.group().matches("(?i)^(Bearer|Basic|Digest|Token)\\s.*") ? m.group().split("\\s+")[0] + " ****" : "****");
         }

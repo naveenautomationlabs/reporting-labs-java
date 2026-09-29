@@ -6,8 +6,8 @@ import java.util.*;
 /**
  * Reads report options from (in order, highest first):
  *   1. System properties: -Dreporting-labs.title=...
- *   2. src/test/resources/reporting-labs.properties
- *   3. Environment variables: REPORTING_LABS_TITLE=...
+ *   2. Environment variables: REPORTING_LABS_TITLE=...
+ *   3. src/test/resources/reporting-labs.properties
  *
  * Names mirror the JavaScript reporter's ReportingLabsOptions. Everything is
  * optional; sensible defaults apply. Unknown keys are ignored — safe to add
@@ -48,9 +48,11 @@ public final class Config {
     // ---------- primitive lookup ----------
 
     private static String get(String key, String def) {
+        // -D on the command line wins, then the environment (CI sets it),
+        // then the file checked into the project.
         String v = System.getProperty("reporting-labs." + key);
-        if (v == null) v = FILE.getProperty("reporting-labs." + key);
         if (v == null) v = System.getenv("REPORTING_LABS_" + toEnv(key));
+        if (v == null) v = FILE.getProperty("reporting-labs." + key);
         return v != null ? stripInlineComment(key, v) : def;
     }
 
@@ -107,16 +109,17 @@ public final class Config {
         for (String k : System.getProperties().stringPropertyNames()) {
             if (k.startsWith(full)) out.put(k.substring(full.length()), System.getProperty(k));
         }
-        for (String k : FILE.stringPropertyNames()) {
-            if (k.startsWith(full) && !out.containsKey(k.substring(full.length()))) {
-                out.put(k.substring(full.length()), FILE.getProperty(k));
-            }
-        }
+        // Same order as get(): -D, then the environment, then the file.
         String envPrefix = "REPORTING_LABS_" + toEnv(subPrefix.substring(0, subPrefix.length() - 1));
         for (Map.Entry<String, String> e : System.getenv().entrySet()) {
             if (e.getKey().startsWith(envPrefix + "_")) {
                 String rest = e.getKey().substring(envPrefix.length() + 1).toLowerCase(Locale.ROOT);
                 if (!out.containsKey(rest)) out.put(rest, e.getValue());
+            }
+        }
+        for (String k : FILE.stringPropertyNames()) {
+            if (k.startsWith(full) && !out.containsKey(k.substring(full.length()))) {
+                out.put(k.substring(full.length()), FILE.getProperty(k));
             }
         }
         return out;
@@ -167,7 +170,7 @@ public final class Config {
     /** Trace-capture policy for Playwright. Same values as `screenshot`
      *  (default `on-failure`) plus `retain-on-failure` which is treated the
      *  same as `on-failure`. */
-    public static String trace()        { return normalize(get("trace", "on-failure")); }
+    public static String trace()        { return normalize(get("trace", "never")); }
 
     /** Video-capture policy — informational for Selenium/Playwright users
      *  who record their own videos. The library never records; users attach

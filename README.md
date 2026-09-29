@@ -230,6 +230,7 @@ reporting-labs.selenium.screenshot=on-failure
 # Playwright
 reporting-labs.playwright.steps=true
 reporting-labs.playwright.screenshot=on-failure
+# off by default: snapshots cost about 70 ms per short test
 reporting-labs.playwright.trace=on-failure
 reporting-labs.playwright.video=never
 

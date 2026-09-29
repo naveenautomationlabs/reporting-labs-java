@@ -105,7 +105,11 @@ public class ReportingLabsExtension
         Method m = ctx.getTestMethod().orElse(null);
         Class<?> cls = ctx.getTestClass().orElse(null);
         RlInternal.begin(ctx.getDisplayName(), cls, m != null ? m.getName() : null, "junit5", classPath(cls));
-        if (cls != null) apply(cls);   // class-level defaults first
+        // Enclosing classes first (a @Nested class inherits its outer class's
+        // @Owner / @Feature), then the class, then the method.
+        java.util.Deque<Class<?>> chain = new java.util.ArrayDeque<>();
+        for (Class<?> c = cls; c != null; c = c.getEnclosingClass()) chain.push(c);
+        for (Class<?> c : chain) apply(c);
         if (m != null)   apply(m);     // then method-level overrides
     }
 
