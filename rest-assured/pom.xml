@@ -7,7 +7,7 @@
   <parent>
     <groupId>dev.reportinglabs</groupId>
     <artifactId>reporting-labs-parent</artifactId>
-    <version>0.1.14</version>
+    <version>0.1.15</version>
   </parent>
 
   <artifactId>reporting-labs-rest-assured</artifactId>

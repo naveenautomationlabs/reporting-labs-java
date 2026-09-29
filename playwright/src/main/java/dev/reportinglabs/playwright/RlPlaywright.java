@@ -25,10 +25,12 @@ import java.util.regex.Pattern;
  * }
  * }</pre>
  *
- * With that call in place, reportingLabs:
- *   - records every request/response the page makes as an API call in the report,
+ * With that in place, reportingLabs:
  *   - starts a Playwright trace and attaches it when the test ends (per policy),
  *   - screenshots the page when the test ends (per policy) and attaches the PNG.
+ * API calls are recorded from {@link APIRequestContext} (an API test's
+ * client, or page.request()), not from the page's own network traffic:
+ * fonts, images and scripts are noise in an API tab, and the trace has them.
  *
  * Nothing else in the test changes — the same page.click(), page.fill(),
  * page.request() calls work. If reportingLabs isn't loaded (or no test is
@@ -158,13 +160,6 @@ public final class RlPlaywright {
 
         PageState st = new PageState(page);
         STATES.put(page, st);
-
-        // API auto-capture: match request → response by request instance.
-        // The consumers are kept so finish() can remove them: a page shared
-        // across tests is attached once per test and must not record twice.
-        page.onRequest(st.reqStarted);
-        page.onRequestFinished(st.reqFinished);
-        page.onRequestFailed(st.reqFailed);
 
         // Start a trace only if the policy could ever want one (skip when
         // trace=never, so we don't pay the recording cost). Tracing is per
@@ -488,50 +483,11 @@ public final class RlPlaywright {
     private static final class PageState {
         final Page page;
         boolean tracing;
-        final Map<Request, Long> starts = new ConcurrentHashMap<>();
-        final java.util.function.Consumer<Request> reqStarted = this::onRequest;
-        final java.util.function.Consumer<Request> reqFinished = this::onRequestFinished;
-        final java.util.function.Consumer<Request> reqFailed = this::onRequestFailed;
-
         PageState(Page page) { this.page = page; }
-
-        void onRequest(Request req) { starts.put(req, System.currentTimeMillis()); }
-
-        void onRequestFinished(Request req) {
-            Long start = starts.remove(req);
-            long dur = start == null ? 0 : Math.max(0, System.currentTimeMillis() - start);
-            try {
-                Response res = req.response();
-                int status = res == null ? 0 : res.status();
-                // Response bodies only for XHR/fetch — an API call's payload is
-                // what a reader wants; documents, scripts and images are noise.
-                String rt = req.resourceType();
-                String respBody = null;
-                if (res != null && ("xhr".equals(rt) || "fetch".equals(rt))) {
-                    final Response r = res;
-                    respBody = textBody(r.headers(), r::text);
-                }
-                Rl.api(req.method(), req.url(), status, dur,
-                       toStr(req.headers()), safeBody(req.postData()),
-                       toStr(res == null ? null : res.headers()), respBody);
-            } catch (Throwable ignore) { /* one bad frame does not fail the test */ }
-        }
-
-        void onRequestFailed(Request req) {
-            Long start = starts.remove(req);
-            long dur = start == null ? 0 : Math.max(0, System.currentTimeMillis() - start);
-            try {
-                Rl.api(req.method(), req.url(), 0, dur,
-                       toStr(req.headers()), safeBody(req.postData()),
-                       Collections.emptyMap(), "failed: " + req.failure());
-            } catch (Throwable ignore) {}
-        }
 
         /** Stops the trace unconditionally (so recording buffers don't
          *  leak) and attaches the zip only if the caller asked for it. */
         void finish(boolean attachTrace) {
-            try { page.offRequest(reqStarted); page.offRequestFinished(reqFinished); page.offRequestFailed(reqFailed); }
-            catch (Throwable ignore) { /* page already closed */ }
             if (tracing) {
                 try {
                     if (attachTrace) {
@@ -551,14 +507,5 @@ public final class RlPlaywright {
         /** Overload for the shutdown cleanup path — never attach on shutdown
          *  (the report has already been written). */
         void finish() { finish(false); }
-
-        private static Map<String, String> toStr(Map<String, String> m) {
-            return m == null ? Collections.emptyMap() : m;
-        }
-
-        private static String safeBody(String s) {
-            if (s == null) return null;
-            return s.length() > 4096 ? s.substring(0, 4096) + " …[truncated]" : s;
-        }
     }
 }

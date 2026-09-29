@@ -12,7 +12,7 @@ Seven Maven artifacts, all under the `dev.reportinglabs` groupId. Pick the one f
 | `reporting-labs-testng` | Framework binding for TestNG. Listener found through ServiceLoader, nothing to register |
 | `reporting-labs-junit5` | Framework binding for JUnit 5. Extension found through the JUnit Platform, one property |
 | `reporting-labs-selenium` | Zero code. Finds the WebDriver on your test (fields, base class, page objects, factory, `ThreadLocal`), records every open, click and type as a step, screenshot per policy. Appium drivers too |
-| `reporting-labs-playwright` | Zero code. Finds the `Page`, `BrowserContext`, `Browser` or `APIRequestContext` on your test the same way: API calls, trace, screenshot and video per policy |
+| `reporting-labs-playwright` | Zero code. Finds the `Page`, `BrowserContext`, `Browser` or `APIRequestContext` on your test the same way: trace, screenshot and video per policy for UI tests, every request and response for API tests |
 | `reporting-labs-rest-assured` | Zero code. Registers a recording filter; every request lands in the API tab with headers, bodies, status and timing |
 | `reporting-labs-cucumber` | One property. A row per scenario at its feature-file line, Given/When/Then as steps, tags as filters. TestNG runner or JUnit Platform engine |
 | `reporting-labs-core` | Engine, annotations, `Rl.*` helpers. Comes with the bindings; use it alone from plain code |
@@ -29,7 +29,7 @@ Step by step, with screenshots, per tool: [Selenium](https://reportinglabs.dev/g
 <dependency>
   <groupId>dev.reportinglabs</groupId>
   <artifactId>reporting-labs-testng</artifactId>
-  <version>0.1.14</version>
+  <version>0.1.15</version>
   <scope>test</scope>
 </dependency>
 ```
@@ -42,7 +42,7 @@ Nothing to register: the listener is found through ServiceLoader. If you keep a 
 <dependency>
   <groupId>dev.reportinglabs</groupId>
   <artifactId>reporting-labs-junit5</artifactId>
-  <version>0.1.14</version>
+  <version>0.1.15</version>
   <scope>test</scope>
 </dependency>
 ```
@@ -81,7 +81,7 @@ The framework binding hands the test instance to every add-on on the classpath w
 What it does with them:
 
 - Selenium: the `WebDriver` is wrapped with a step recorder and the field is pointed at the wrapper, so page objects built from it record too. Concrete-typed fields (`ChromeDriver driver`) keep the raw driver; screenshots still work.
-- Playwright: a `Page` gets request listeners, a trace and a screenshot per policy; a `BrowserContext` covers its current and future pages; a `Browser` covers every context and is instrumented so pages created inside the test body are attached; an `APIRequestContext` field is swapped for a recording wrapper.
+- Playwright: a `Page` gets a trace and a screenshot per policy; a `BrowserContext` covers its current and future pages; a `Browser` covers every context and is instrumented so pages created inside the test body are attached; an `APIRequestContext` field is swapped for a recording wrapper, so API tests get the API tab. The page's own network traffic (fonts, images, scripts) is not recorded as API calls, same as the Node.js reporter; the trace has it.
 
 If an object lives somewhere the scan cannot reach (a local variable in a helper, a class outside your own packages) attach it by hand once: `RlSelenium.attach(driver)`, `RlPlaywright.attach(page)`, `RlPlaywright.attach(context)`, `RlPlaywright.record(apiContext)`. Attaching an object the scan already found is harmless. `reporting-labs.selenium.autoAttach=false` / `reporting-labs.playwright.autoAttach=false` turn the discovery off.
 
@@ -91,7 +91,7 @@ Add `reporting-labs-selenium`. Your `BaseTest`, `DriverFactory` and page objects
 
 ## Playwright for Java: zero code
 
-Add `reporting-labs-playwright`. Your `BaseTest`, `PlaywrightFactory` and page objects stay as they are: the `Page` (or `BrowserContext`, `Browser`, `APIRequestContext`) is found on the test instance, in a base class, a page object, a factory or a `ThreadLocal`, static holders included, and wired for API capture, trace and screenshot per policy. An `APIRequestContext` field is swapped for a recording wrapper, so API-only tests get the API tab too.
+Add `reporting-labs-playwright`. Your `BaseTest`, `PlaywrightFactory` and page objects stay as they are: the `Page` (or `BrowserContext`, `Browser`, `APIRequestContext`) is found on the test instance, in a base class, a page object, a factory or a `ThreadLocal`, static holders included, and wired for trace and screenshot per policy. An `APIRequestContext` field is swapped for a recording wrapper, so API tests get the API tab with every request and response. Page traffic (fonts, images, scripts) stays out of the API tab.
 
 Two things still take a line, because the object never sits on the test:
 
@@ -120,7 +120,7 @@ Every scenario is one row named after the scenario, at `orders.feature:13`, with
 
 ## A typical framework, unchanged
 
-This is the shape most Java suites have. Nothing in it mentions reportingLabs, and it produces the full report: hooks with timings, the failing line and snippet, every request the page made, `failure.png` and `trace.zip` on the failed test.
+This is the shape most Java suites have. Nothing in it mentions reportingLabs, and it produces the full report: hooks with timings, the failing line and snippet, `failure.png` and `trace.zip` on the failed test.
 
 ```java
 public class BaseTest {
@@ -257,12 +257,12 @@ reportingLabs sits on the framework's `@Test` lifecycle — it does not care wha
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Rows show hooks only: no screenshot, no API tab, no trace | The tool add-on is not on the test classpath, or it is older than 0.1.14, which needed `RlPlaywright.attach(page)` | Add `reporting-labs-selenium` / `-playwright` / `-rest-assured` at the same version as the binding |
+| Rows show hooks only: no screenshot, no API tab, no trace | The tool add-on is not on the test classpath, or it is older than 0.1.15, which needed `RlPlaywright.attach(page)` | Add `reporting-labs-selenium` / `-playwright` / `-rest-assured` at the same version as the binding |
 | Page exists but nothing is recorded | The page is a local variable, or the holder class is outside your packages | `RlPlaywright.attach(page)` once after creating it |
 | No video | Playwright decides at context creation | `browser.newContext(RlPlaywright.contextOptions())` and `reporting-labs.playwright.video=on-failure` |
 | `page.request()` calls missing from the API tab | The context is created inside the test body | `RlPlaywright.record(page.request())` and use the wrapper |
 | Cucumber rows titled "Runs Cucumber Scenarios" | The plugin is not registered | `cucumber.plugin=dev.reportinglabs.cucumber.ReportingLabsPlugin` in `cucumber.properties` (TestNG runner) or `junit-platform.properties` (JUnit Platform engine) |
-| Environment row split, `Test` = `data=…` | A space in the properties key | `reporting-labs.env.Test\ data=…` (0.1.14 also repairs the common case) |
+| Environment row split, `Test` = `data=…` | A space in the properties key | `reporting-labs.env.Test\ data=…` (0.1.15 also repairs the common case) |
 | Screenshot appears twice | Your `@AfterMethod` attaches one too | Keep either; an attachment named `screen.png` / `failure.png` from your hook replaces the automatic one |
 
 ## Requirements
