@@ -50,6 +50,15 @@ class ErrorExplainerTest {
         assertEquals("http://localhost:1/", e.get("url"));
     }
 
+    @Test void restAssuredAssertions() {
+        Map<String, Object> e = x(new AssertionError("1 expectation failed.\nJSON path status doesn't match.\nExpected: SHIPPED\n  Actual: DELIVERED\n"));
+        assertEquals("JSON path status doesn't match: expected SHIPPED, got DELIVERED.", e.get("summary"));
+        Map<String, Object> s = x(new AssertionError("1 expectation failed.\nExpected status code <201> but was <404>.\n"));
+        assertEquals("Expected status code <201> but was <404>.", s.get("summary"));
+        Map<String, Object> tm = x(new AssertionError("1 expectation failed.\nExpected response time was not a value less than <300L> milliseconds, was 1216 milliseconds (1216 ms).\n"));
+        assertEquals("The response took 1216 ms, more than the test allows.", tm.get("summary"));
+    }
+
     @Test void nullPointerIsScript() {
         Map<String, Object> e = x(new NullPointerException("Cannot invoke \"String.length()\" because \"name\" is null"));
         assertEquals("script", e.get("kind"));

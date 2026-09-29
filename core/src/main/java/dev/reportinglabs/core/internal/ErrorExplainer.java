@@ -160,6 +160,17 @@ public final class ErrorExplainer {
         // ── Assertions: TestNG, JUnit, AssertJ, Hamcrest ───────────────────
         boolean isAssert = t instanceof AssertionError || type.endsWith("AssertionFailedError") || type.endsWith("ComparisonFailure") || type.contains("opentest4j");
         if (isAssert) {
+            // REST Assured: "1 expectation failed.\nJSON path status doesn't match.\nExpected: SHIPPED\n  Actual: DELIVERED"
+            m = Pattern.compile("^\\d+ expectations? failed\\.\\s*\\n\\s*(.+?)\\s*$", Pattern.MULTILINE).matcher(msg);
+            if (m.find()) {
+                String what = m.group(1).trim();
+                String e = pick(msg, "^\\s*Expected(?:[^:\\n]{0,40})?:[ \\t]*(.+)$"), r = pick(msg, "^\\s*(?:Actual|but was|Received)(?:[^:\\n]{0,40})?:[ \\t]*(.+)$");
+                if (e != null && r != null) return out("assertion", cut(what.replaceFirst("[.:]$", ""), 90) + ": expected " + cut(e.trim(), 60) + ", got " + cut(r.trim(), 60) + ".", "Compare expected and actual below. The API tab has the request and the full response.", "matcher", "restassured");
+                String tm2 = pick(msg, "was (\\d+) milliseconds");
+                if (what.startsWith("Expected response time")) return out("assertion", "The response took " + (tm2 != null ? tm2 + " ms" : "too long") + ", more than the test allows.", "The API may be slow or the limit too tight. The API tab shows every call's timing.", "matcher", "time");
+                if (what.startsWith("Expected status code")) return out("assertion", cut(what.replaceFirst("[.:]$", ""), 120) + ".", "Check the response body in the API tab; the server usually says why.", "matcher", "statusCode");
+                return out("assertion", cut(what, 140), "See the full message below and the API tab for the request.", "matcher", "restassured");
+            }
             String expected = null, received = null;
             m = Pattern.compile("expected \\[(.*?)\\] but found \\[(.*?)\\]", Pattern.DOTALL).matcher(msg);            // TestNG
             if (m.find()) { expected = m.group(1); received = m.group(2); }
