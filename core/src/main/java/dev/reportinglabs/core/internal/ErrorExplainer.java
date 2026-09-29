@@ -130,6 +130,12 @@ public final class ErrorExplainer {
         }
 
         // ── Test time-outs ────────────────────────────────────────────────
+        Matcher jt = Pattern.compile("timed out after (\\d+) (millisecond|second|minute)s?").matcher(msg);
+        if (type.endsWith("TimeoutException") && jt.find()) {
+            long n = Long.parseLong(jt.group(1));
+            long ms = jt.group(2).startsWith("milli") ? n : jt.group(2).startsWith("sec") ? n * 1000 : n * 60000;
+            return out("test-timeout", "The whole test took longer than " + secs(ms) + ", the limit set by @Timeout.", "Find the slow step in the Steps list below. Raise the @Timeout value only if the flow is really that long.", "timeoutMs", ms);
+        }
         Matcher m = Pattern.compile("didn't finish within the time-out (\\d+)").matcher(msg);
         if (type.endsWith("ThreadTimeoutException") || m.find()) {
             long ms = m.find(0) ? Long.parseLong(m.group(1)) : (timeoutMs == null ? 0 : timeoutMs);

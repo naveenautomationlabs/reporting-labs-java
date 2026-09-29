@@ -7,7 +7,7 @@
   <parent>
     <groupId>dev.reportinglabs</groupId>
     <artifactId>reporting-labs-parent</artifactId>
-    <version>0.1.18</version>
+    <version>0.1.19</version>
   </parent>
 
   <artifactId>reporting-labs-junit5</artifactId>
@@ -23,6 +23,11 @@
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter-api</artifactId>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.platform</groupId>
+      <artifactId>junit-platform-launcher</artifactId>
       <scope>provided</scope>
     </dependency>
     <dependency>

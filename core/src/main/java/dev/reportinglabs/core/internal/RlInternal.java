@@ -237,6 +237,7 @@ public final class RlInternal {
     }
 
     public static TestSlot begin(String title, String file, int line, String projectName, List<String> path) {
+        title = MASKER.maskText(title);   // a parameterized title can carry a password column
         String key = idOf(projectName, file, line, title);
         String id  = key + "#" + SEQ.incrementAndGet();
         TestSlot slot = new TestSlot(id, key, title, file, line, projectName, path);
@@ -254,6 +255,51 @@ public final class RlInternal {
         slot.stdout.addAll(PENDING_STDOUT.get()); PENDING_STDOUT.get().clear();
         slot.stderr.addAll(PENDING_STDERR.get()); PENDING_STDERR.get().clear();
         return slot;
+    }
+
+    /** Makes the running test's history key distinct from another test
+     *  with the same title at the same source line: a @Test inherited from
+     *  a base class runs once per subclass, and each is its own row. */
+    public static void keyQualifier(String qualifier) {
+        TestSlot s = CURRENT.get();
+        if (s == null || qualifier == null || qualifier.isEmpty()) return;
+        s.key = idOf(s.projectName, s.file, s.line, qualifier + "/" + s.title);
+    }
+
+    /** Parks the running test on this thread and returns it, so another
+     *  row can be recorded in between (a JUnit @TestFactory whose dynamic
+     *  tests run inside the factory's own execution). Null when none. */
+    public static TestSlot suspend() {
+        TestSlot s = CURRENT.get();
+        CURRENT.remove();
+        return s;
+    }
+
+    /** Puts a parked test back as the running one. */
+    public static void resume(TestSlot s) {
+        if (s == null) return;
+        CURRENT.set(s);
+        LAST_ENDED.remove();
+    }
+
+    /** Drops the running test without recording it (a @TestFactory whose
+     *  dynamic tests were recorded as rows of their own). Its before-hooks
+     *  are kept for the next row on this thread. */
+    public static void discard() {
+        TestSlot s = CURRENT.get();
+        if (s == null) return;
+        CURRENT.remove();
+        if (s.beforeHooks != null) PENDING_BEFORE_HOOKS.get().addAll(children(s.beforeHooks));
+    }
+
+    /** The test that just ended on this thread passed as far as the
+     *  framework had said, but an after-hook then failed and the framework
+     *  counts that as a test failure (JUnit's @AfterEach). Flip it. */
+    public static void failLastEnded(Throwable failure, String hookTitle) {
+        TestSlot s = LAST_ENDED.get();
+        if (s == null || failure == null || !"passed".equals(s.outcome)) return;
+        s.outcome = "failed";
+        applyFailure(s, failure, hookTitle);
     }
 
     public static void addEndListener(java.util.function.Consumer<TestSlot> l) {
@@ -550,6 +596,27 @@ public final class RlInternal {
             slot.outcome = "skipped";
         } else if (failure != null) {
             slot.outcome = "failed";
+            applyFailure(slot, failure, failedHook);
+        }
+        Throwable forHooks = skipped ? null : failure;
+        for (java.util.function.Consumer<Throwable> cb : slot.onEnd) {
+            try { cb.accept(forHooks); } catch (Throwable ignore) {}
+        }
+        for (java.util.function.Consumer<TestSlot> l : END_LISTENERS) {
+            try { l.accept(slot); } catch (Throwable ignore) {}
+        }
+        // Unique id per invocation — every begin() call becomes its own row,
+        // which is what data-driven tests and retries need. If a real flaky
+        // detection layer is needed later, it belongs in ReportBuilder on
+        // top of the raw invocations, not here.
+        FINISHED.put(slot.id, slot);
+        CURRENT.remove();
+        LAST_ENDED.set(slot);
+    }
+
+    /** Message, location, snippet, explanation and stack of a failure. */
+    private static void applyFailure(TestSlot slot, Throwable failure, String failedHook) {
+        {
             String shown = ErrorExplainer.displayMessage(failure);
             if (failedHook != null) shown = failedHook + " failed: " + shown;
             slot.errorMessage = MASKER.maskText(shown);
@@ -595,20 +662,6 @@ public final class RlInternal {
             }
             slot.errorStack = MASKER.maskText(sb.toString());
         }
-        Throwable forHooks = skipped ? null : failure;
-        for (java.util.function.Consumer<Throwable> cb : slot.onEnd) {
-            try { cb.accept(forHooks); } catch (Throwable ignore) {}
-        }
-        for (java.util.function.Consumer<TestSlot> l : END_LISTENERS) {
-            try { l.accept(slot); } catch (Throwable ignore) {}
-        }
-        // Unique id per invocation — every begin() call becomes its own row,
-        // which is what data-driven tests and retries need. If a real flaky
-        // detection layer is needed later, it belongs in ReportBuilder on
-        // top of the raw invocations, not here.
-        FINISHED.put(slot.id, slot);
-        CURRENT.remove();
-        LAST_ENDED.set(slot);
     }
 
     /** Called from Rl.meta at runtime. */

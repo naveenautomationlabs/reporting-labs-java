@@ -10,7 +10,7 @@ Seven Maven artifacts, all under the `dev.reportinglabs` groupId. Pick the one f
 | Artifact | What it is |
 |---|---|
 | `reporting-labs-testng` | Framework binding for TestNG. Listener found through ServiceLoader, nothing to register |
-| `reporting-labs-junit5` | Framework binding for JUnit 5. Extension found through the JUnit Platform, one property |
+| `reporting-labs-junit5` | Framework binding for JUnit 5. Extension found through the JUnit Platform, one property. Parameterized, repeated, dynamic (`@TestFactory`, Karate), nested, inherited, disabled, assumptions, time-outs, tags, `TestReporter` entries, hook failures, junit-pioneer retries |
 | `reporting-labs-selenium` | Zero code. Finds the WebDriver on your test (fields, base class, page objects, factory, `ThreadLocal`), records every open, click and type as a step, screenshot per policy. Appium drivers too |
 | `reporting-labs-playwright` | Zero code. Finds the `Page`, `BrowserContext`, `Browser` or `APIRequestContext` on your test the same way: every action as a step, trace, screenshot and video per policy for UI tests, every request and response for API tests |
 | `reporting-labs-rest-assured` | Zero code. Registers a recording filter; every request lands in the API tab with headers, bodies, status and timing |
@@ -252,7 +252,7 @@ reportingLabs sits on the framework's `@Test` lifecycle — it does not care wha
 - Selenium and Appium (`reporting-labs-selenium`)
 - REST Assured (`reporting-labs-rest-assured`)
 - Playwright for Java (`reporting-labs-playwright`)
-- Cucumber JVM (`reporting-labs-cucumber`), on the TestNG runner or the JUnit Platform engine; Karate is on the roadmap
+- Cucumber JVM (`reporting-labs-cucumber`), on the TestNG runner, the JUnit Platform engine or the JUnit 4 runner; Karate through its JUnit 5 runner (one row per scenario, nothing extra to add)
 - Plain code, HttpClient, JDBC: `Rl.api()` and `Rl.testData()` by hand
 
 ## Troubleshooting
@@ -262,6 +262,7 @@ reportingLabs sits on the framework's `@Test` lifecycle — it does not care wha
 | Rows show hooks only: no screenshot, no API tab, no trace | The tool add-on is not on the test classpath, or it is older than 0.1.15, which needed `RlPlaywright.attach(page)` | Add `reporting-labs-selenium` / `-playwright` / `-rest-assured` at the same version as the binding |
 | Page exists but nothing is recorded | The page is a local variable, or the holder class is outside your packages | `RlPlaywright.attach(page)` once after creating it |
 | Cucumber: no Selenium steps or screenshot on a scenario | The driver sits in an instance field of a step class, not in a static holder the glue classes reach | `RlSelenium.attach(driver)` once, or keep it in a `ThreadLocal` in your factory |
+| JUnit 5: `Rl.log` / `System.out` missing on a `@Timeout(threadMode = SEPARATE_THREAD)` test | The body ran on another thread | Use the default same-thread mode, or log from the test thread |
 | REST Assured calls missing after `RestAssured.reset()` in a test body | The reset dropped the global filter for the rest of that test | `RestAssured.filters(new RlRestAssuredFilter())` right after it; a reset in a hook needs nothing |
 | No video | Playwright decides at context creation | `browser.newContext(RlPlaywright.contextOptions())` and `reporting-labs.playwright.video=on-failure` |
 | `page.request()` calls missing from the API tab | The context is created inside the test body | `RlPlaywright.record(page.request())` and use the wrapper |
