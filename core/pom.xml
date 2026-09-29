@@ -7,7 +7,7 @@
   <parent>
     <groupId>dev.reportinglabs</groupId>
     <artifactId>reporting-labs-parent</artifactId>
-    <version>0.1.10</version>
+    <version>0.1.11</version>
   </parent>
 
   <artifactId>reporting-labs-core</artifactId>
@@ -19,6 +19,17 @@
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- Only for the ErrorExplainer tests, which use the real exception types. -->
+    <dependency>
+      <groupId>com.microsoft.playwright</groupId>
+      <artifactId>playwright</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.seleniumhq.selenium</groupId>
+      <artifactId>selenium-java</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>

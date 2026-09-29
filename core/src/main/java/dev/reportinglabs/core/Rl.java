@@ -40,6 +40,9 @@ public final class Rl {
     public static void testData(Object value) { RlInternal.testData(null, value); }
     public static void testData(Object value, String name) { RlInternal.testData(name, value); }
     public static void testData(String name, Object value) { RlInternal.testData(name, value); }
+    /** Name first, then a CSV or plain-text value. (Without this overload a
+     *  call with two Strings would be ambiguous between the two above.) */
+    public static void testData(String name, String value) { RlInternal.testData(name, value); }
 
     /** Record an API call. Everything besides method/url/status is optional. */
     public static void api(String method, String url, int status) {

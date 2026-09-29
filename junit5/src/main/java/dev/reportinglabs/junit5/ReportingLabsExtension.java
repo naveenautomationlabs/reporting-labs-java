@@ -104,8 +104,7 @@ public class ReportingLabsExtension
     private static void begin(ExtensionContext ctx) {
         Method m = ctx.getTestMethod().orElse(null);
         Class<?> cls = ctx.getTestClass().orElse(null);
-        String file = cls != null ? cls.getSimpleName() + ".java" : "unknown";
-        RlInternal.begin(ctx.getDisplayName(), file, 0, "junit5", classPath(cls));
+        RlInternal.begin(ctx.getDisplayName(), cls, m != null ? m.getName() : null, "junit5", classPath(cls));
         if (cls != null) apply(cls);   // class-level defaults first
         if (m != null)   apply(m);     // then method-level overrides
     }

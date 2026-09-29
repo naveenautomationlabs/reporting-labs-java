@@ -68,6 +68,7 @@ public final class Masker {
     private Pattern keyValue;             // password=x | "password": "x" | token -> x
     private Pattern spoken;               // password is x | with password S3cret@1
     private Pattern mentionsSecret;
+    private Pattern quotedPair;       // "password", "x"
     private static final Pattern COMPARED =
         Pattern.compile("\\b(Expected|Received|Actual|expected|received|actual|got|but found|but was)(\\s*[:=]?\\s*)([\"'\\[\\u201c]?)([^\"'\\]\\u201d\\s]+)");
 
@@ -81,6 +82,8 @@ public final class Masker {
         if (extra != null) for (String k : extra) { compound.add(quote(k)); spokenKeys.add(quote(k)); }
         String key = "(?:[\\w.-]*?(?:" + String.join("|", compound) + ")[\\w-]*|authorization|auth|otp|pin|cvv|ssn)";
         keyValue = Pattern.compile("([\"']?)\\b(" + key + ")\\b([\"']?)(\\s*(?:=>|->|[=:])\\s*)([\"']?)([^\"'\\s&;,}\\]\\)]+)", Pattern.CASE_INSENSITIVE);
+        // Code and map literals: ("#password", "x") / Map.of("password", "x") — a quoted key, a comma, a quoted value.
+        quotedPair = Pattern.compile("([\"'])#?(" + key + ")\\1(\\s*,\\s*)([\"'])([^\"']+)\\4", Pattern.CASE_INSENSITIVE);
         spoken = Pattern.compile("\\b(" + String.join("|", spokenKeys) + ")(s?\\b\\s+(?:is|was|of|as)?\\s*['\"]?)([^\\s'\",;]+)", Pattern.CASE_INSENSITIVE);
         mentionsSecret = Pattern.compile("\\b(?:" + String.join("|", spokenKeys) + ")s?\\b", Pattern.CASE_INSENSITIVE);
     }
@@ -110,6 +113,7 @@ public final class Masker {
             s = replace(p, s, m -> m.group().matches("(?i)^(Bearer|Basic|Digest|Token)\\s.*") ? m.group().split("\\s+")[0] + " ****" : "****");
         }
         s = replace(keyValue, s, m -> m.group(1) + m.group(2) + m.group(3) + m.group(4) + m.group(5) + "****");
+        s = replace(quotedPair, s, m -> m.group().substring(0, m.group().length() - m.group(5).length() - 1) + "****" + m.group(4));
         s = replace(spoken, s, m -> {
             String value = m.group(3), word = value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
             if (NOT_A_SECRET.contains(word) || value.equals("****")) return m.group();

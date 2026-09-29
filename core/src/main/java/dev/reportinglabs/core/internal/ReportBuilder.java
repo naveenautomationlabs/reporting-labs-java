@@ -101,8 +101,8 @@ public final class ReportBuilder {
         data.put("bdd", Config.bdd());
         data.put("rootDir", System.getProperty("user.dir", ""));
         data.put("env", envRows());
-        data.put("runStatus", failed > 0 ? "failed" : "passed");
-        data.put("globalErrors", Collections.emptyList());
+        data.put("runStatus", failed > 0 || !RlInternal.globalErrors().isEmpty() ? "failed" : "passed");
+        data.put("globalErrors", RlInternal.globalErrors());
         data.put("globalOutput", Collections.emptyList());
 
         Map<String, Object> options = new LinkedHashMap<>();
@@ -160,12 +160,15 @@ public final class ReportBuilder {
         result.put("status", t.outcome);
         result.put("duration", t.duration);
         result.put("startTime", t.startTime);
-        result.put("workerIndex", 0);
+        result.put("workerIndex", t.workerIndex);
         List<Map<String, Object>> errors = new ArrayList<>();
         if (t.errorMessage != null) {
             Map<String, Object> e = new LinkedHashMap<>();
             e.put("message", t.errorMessage == null ? "" : t.errorMessage);
             e.put("stack",   t.errorStack   == null ? "" : t.errorStack);
+            if (t.errorSnippet != null)  e.put("snippet",  t.errorSnippet);
+            if (t.errorLocation != null) e.put("location", t.errorLocation);
+            if (t.explain != null)       e.put("explain",  t.explain);
             errors.add(e);
         }
         result.put("errors", errors);
@@ -194,6 +197,7 @@ public final class ReportBuilder {
         Map<String, Object> r = new LinkedHashMap<>();
         r.put("k", k);
         r.put("v", v);
+        if (v.startsWith("http://") || v.startsWith("https://")) r.put("href", v);   // the card links it
         rows.add(r);
     }
 
@@ -230,7 +234,9 @@ public final class ReportBuilder {
             row.put("flaky",   ((Number) stats.get("flaky")).intValue());
             row.put("skipped", ((Number) stats.get("skipped")).intValue());
             // per-test outcome map, keyed by test.key, values are single-char arrays: 'p'|'f'|'k'|'s'
-            Map<String, List<String>> ttm = new LinkedHashMap<>();
+            // Per test: outcome code and the last attempt's duration, the shape the
+            // Node reporter writes; the duration is what "Got slower" compares.
+            Map<String, List<Object>> ttm = new LinkedHashMap<>();
             for (Map<String, Object> t : tests) {
                 String o = String.valueOf(t.get("outcome"));
                 String tag = "p";
@@ -240,7 +246,10 @@ public final class ReportBuilder {
                     case "skipped": tag = "s"; break;
                     default: tag = "p";
                 }
-                ttm.put(String.valueOf(t.get("key")), Collections.singletonList(tag));
+                long last = 0;
+                @SuppressWarnings("unchecked") List<Map<String, Object>> results = (List<Map<String, Object>>) t.get("results");
+                if (results != null && !results.isEmpty()) last = ((Number) results.get(results.size() - 1).getOrDefault("duration", 0L)).longValue();
+                ttm.put(String.valueOf(t.get("key")), Arrays.asList(tag, last));
             }
             row.put("tests", ttm);
             entries.add(row);

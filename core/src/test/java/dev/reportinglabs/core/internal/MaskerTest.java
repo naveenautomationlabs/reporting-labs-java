@@ -55,6 +55,16 @@ class MaskerTest {
         assertNull(m.maskText(null));
     }
 
+    @Test void codeLiteralsAndMapPairs() {
+        masked("page().fill(\"#password\", \"" + PW + "\");");
+        masked("Map.of(\"user\", \"demo\", \"password\", \"" + PW + "\")");
+        assertEquals("assertEquals(label, \"Password\")", m.maskText("assertEquals(label, \"Password\")"));
+    }
+
+    @Test void apiBodies() {
+        assertEquals("{\"password\":\"****\",\"user\":\"demo\"}", m.maskText("{\"password\":\"" + PW + "\",\"user\":\"demo\"}"));
+    }
+
     @Test void applyMasksStringsInsideStructures() {
         Object out = m.apply(java.util.Collections.singletonMap("note", "password=" + PW));
         assertEquals("{note=password=****}", out.toString());

@@ -43,6 +43,82 @@ public final class RlPlaywright {
     private static final ThreadLocal<List<Page>> TEST_PAGES = ThreadLocal.withInitial(ArrayList::new);
     private static final Map<Page, PageState> STATES = new ConcurrentHashMap<>();
     private static volatile boolean shutdownHooked = false;
+    /** Videos to attach once their contexts are closed and the report is written. */
+    private static final List<Object[]> PENDING_VIDEOS = Collections.synchronizedList(new ArrayList<>());
+    private static volatile boolean videoHooked = false;
+
+    /**
+     * Context options that turn on video recording when the capture policy
+     * (reporting-labs.video) is not {@code never}. Use it when creating the
+     * context and the video lands in the report per policy:
+     *
+     * <pre>{@code
+     * context = browser.newContext(RlPlaywright.contextOptions());
+     * page    = context.newPage();
+     * RlPlaywright.attach(page);
+     * }</pre>
+     *
+     * Add your own options to the returned object (viewport, locale, …).
+     * The video is only finished once the context is closed, so close it in
+     * your after-hook as usual.
+     */
+    public static Browser.NewContextOptions contextOptions() {
+        Browser.NewContextOptions o = new Browser.NewContextOptions();
+        if (!"never".equals(Rl.videoMode())) {
+            Path dir = Paths.get(dev.reportinglabs.core.internal.Config.outputFolder(), "videos");
+            try { Files.createDirectories(dir); } catch (IOException ignore) {}
+            o.setRecordVideoDir(dir);
+        }
+        return o;
+    }
+
+    private static void rememberVideo(Page page) {
+        if ("never".equals(Rl.videoMode())) return;
+        RlInternal.TestSlot slot = RlInternal.currentOrLast();
+        if (slot == null) return;
+        Video v;
+        try { v = page.video(); } catch (Throwable t) { return; }
+        if (v == null) return;
+        PENDING_VIDEOS.add(new Object[] { slot, v });
+        if (!videoHooked) {
+            synchronized (RlPlaywright.class) {
+                if (!videoHooked) { videoHooked = true; RlInternal.beforeWrite(RlPlaywright::attachVideos); }
+            }
+        }
+    }
+
+    /** Runs right before the report is written: by then every context is
+     *  closed and the .webm files are complete. Copies each video that the
+     *  policy wants into <report>/assets and links it from its test. */
+    private static void attachVideos() {
+        java.io.File out = RlInternal.outputDir();
+        if (out == null) return;
+        Path assets = out.toPath().resolve("assets");
+        int n = 0;
+        Path videosDir = null;
+        for (Object[] pv : new ArrayList<>(PENDING_VIDEOS)) {
+            RlInternal.TestSlot slot = (RlInternal.TestSlot) pv[0];
+            Video v = (Video) pv[1];
+            boolean failed = "failed".equals(slot.outcome());
+            boolean wanted = !"skipped".equals(slot.outcome()) && Rl.shouldCaptureVideo(failed);
+            try {
+                Path src = v.path();
+                if (src == null || !Files.isRegularFile(src)) continue;
+                if (videosDir == null) videosDir = src.getParent();
+                if (wanted && Files.size(src) > 0) {
+                    Files.createDirectories(assets);
+                    String name = "video-" + (++n) + ".webm";
+                    Path dst = assets.resolve(name);
+                    Files.copy(src, dst, StandardCopyOption.REPLACE_EXISTING);
+                    RlInternal.attachFile(slot, "video.webm", "video/webm", "assets/" + name, Files.size(dst));
+                }
+                Files.deleteIfExists(src);   // the report has its copy; the policy did not want the rest
+            } catch (Throwable ignore) { /* a missing video never breaks the report */ }
+        }
+        PENDING_VIDEOS.clear();
+        // Leave no empty recordings folder behind.
+        try { if (videosDir != null && Files.isDirectory(videosDir) && !Files.list(videosDir).findAny().isPresent()) Files.delete(videosDir); } catch (Throwable ignore) {}
+    }
 
     private RlPlaywright() {}
 
@@ -338,6 +414,7 @@ public final class RlPlaywright {
         for (Page p : pages) {
             PageState st = STATES.remove(p);
             if (st != null) st.finish(attachTrace);
+            rememberVideo(p);
         }
     }
 

@@ -26,6 +26,23 @@ public class ReportingLabsListener implements ITestListener, IConfigurationListe
     private static final ThreadLocal<ITestNGMethod> PRESTARTED = new ThreadLocal<>();
     /** The configuration method currently running on this thread, as a hook step. */
     private static final ThreadLocal<RlInternal.Step> HOOK = new ThreadLocal<>();
+    /** Failures of configuration methods, so a test TestNG skips because of
+     *  one can be reported as failed with that error. */
+    private static final Map<ITestNGMethod, Throwable> CONFIG_FAILURES = new java.util.concurrent.ConcurrentHashMap<>();
+
+    @Override
+    public void onConfigurationFailure(ITestResult tr) {
+        ITestNGMethod tm = tr.getMethod();
+        Throwable t = tr.getThrowable();
+        if (tm == null || t == null) return;
+        CONFIG_FAILURES.put(tm, t);
+        // Suite/test/class level: nothing else will show it, so it goes to the
+        // report's global errors too.
+        if (tm.isBeforeSuiteConfiguration() || tm.isBeforeTestConfiguration() || tm.isBeforeClassConfiguration()
+            || tm.isAfterSuiteConfiguration() || tm.isAfterTestConfiguration() || tm.isAfterClassConfiguration()) {
+            RlInternal.globalError(hookTitle(tm) + " in " + tm.getRealClass().getSimpleName(), t);
+        }
+    }
 
     // ---- configuration methods as "Before Hooks" / "After Hooks" steps ----
 
@@ -81,7 +98,7 @@ public class ReportingLabsListener implements ITestListener, IConfigurationListe
     private static void begin(ITestNGMethod tm) {
         Class<?> cls = tm.getRealClass();
         Method m = tm.getConstructorOrMethod().getMethod();
-        RlInternal.begin(displayTitle(tm, m), cls.getSimpleName() + ".java", 0, "testng", classPath(cls));
+        RlInternal.begin(displayTitle(tm, m), cls, m.getName(), "testng", classPath(cls));
         apply(cls);
         apply(m);
     }
@@ -131,8 +148,24 @@ public class ReportingLabsListener implements ITestListener, IConfigurationListe
     }
     @Override public void onTestSkipped(ITestResult tr) {
         PRESTARTED.remove();
+        // Skipped because a @Before* failed: TestNG never called onTestStart,
+        // so open the row here and report it as failed with the hook's error.
+        List<ITestNGMethod> causedBy = skipCausedBy(tr);
+        if (RlInternal.current() == null) begin(tr.getMethod());
+        if (!causedBy.isEmpty()) {
+            ITestNGMethod hook = causedBy.get(0);
+            Throwable t = CONFIG_FAILURES.get(hook);
+            RlInternal.endFailedByHook(t != null ? t : new IllegalStateException("configuration method failed"), hookTitle(hook));
+            return;
+        }
         if (endRetriedAttempt(tr)) return;
         RlInternal.end(tr.getThrowable(), true);
+    }
+
+    /** ITestResult.getSkipCausedBy() exists since TestNG 7.0. */
+    private static List<ITestNGMethod> skipCausedBy(ITestResult tr) {
+        try { List<ITestNGMethod> l = tr.getSkipCausedBy(); return l == null ? Collections.emptyList() : l; }
+        catch (Throwable t) { return Collections.emptyList(); }
     }
     @Override public void onTestFailedButWithinSuccessPercentage(ITestResult tr) { RlInternal.end(tr.getThrowable(), false); }
 

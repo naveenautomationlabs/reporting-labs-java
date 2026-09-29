@@ -61,7 +61,15 @@ public final class RlInternal {
         long duration = 0;
         String errorMessage;
         String errorStack;
+        String errorSnippet;                 // code around the failing line, when the source is found
+        Map<String, Object> errorLocation;   // { file, line, column }
+        Map<String, Object> explain;         // plain-language reading of the failure
         String skipReason;            // SkipException / @Disabled / assumption message
+        /** The test class and method, for source lookups. */
+        Class<?> testClass;
+        String testMethod;
+        /** Index of the worker thread that ran this test, first-seen order. */
+        int workerIndex;
         /** This failed invocation will be retried (TestNG IRetryAnalyzer):
          *  it becomes an earlier attempt of the next invocation with the
          *  same key instead of its own row. */
@@ -110,6 +118,13 @@ public final class RlInternal {
      *  regardless of whether the parallelism was configured in Surefire,
      *  in testng.xml or in Gradle's test task. */
     private static final Set<Long> WORKER_THREADS = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    /** Thread id -> worker index, so the Timeline can show one lane per thread. */
+    private static final Map<Long, Integer> WORKER_INDEX = new ConcurrentHashMap<>();
+    /** Errors outside any test: a @BeforeSuite / @BeforeClass that failed. */
+    private static final List<Map<String, Object>> GLOBAL_ERRORS = Collections.synchronizedList(new ArrayList<>());
+    /** Work to do right before the report is built (attach videos, …). */
+    private static final List<Runnable> BEFORE_WRITE = Collections.synchronizedList(new ArrayList<>());
+    private static volatile java.io.File OUTPUT_DIR;
 
     public static int workerThreadCount() { return Math.max(1, WORKER_THREADS.size()); }
 
@@ -158,13 +173,26 @@ public final class RlInternal {
      *  gets a unique id so that data-driven tests, retries and re-runs of
      *  the same method don't collapse into one row. `key` stays stable
      *  across invocations so the history matcher can still line up runs. */
+    /** Begin a test whose source location is resolved from the class and
+     *  method: the report then shows Foo.java:42 and a code snippet on failure. */
+    public static TestSlot begin(String title, Class<?> cls, String method, String projectName, List<String> path) {
+        String file = cls != null ? SourceLocator.relativeFile(cls) : "unknown";
+        int line = SourceLocator.lineOf(cls, method);
+        TestSlot s = begin(title, file, line, projectName, path);
+        s.testClass = cls;
+        s.testMethod = method;
+        return s;
+    }
+
     public static TestSlot begin(String title, String file, int line, String projectName, List<String> path) {
         String key = idOf(projectName, file, line, title);
         String id  = key + "#" + SEQ.incrementAndGet();
         TestSlot slot = new TestSlot(id, key, title, file, line, projectName, path);
         CURRENT.set(slot);
         LAST_ENDED.remove();
-        WORKER_THREADS.add(Thread.currentThread().getId());
+        long tid = Thread.currentThread().getId();
+        WORKER_THREADS.add(tid);
+        slot.workerIndex = WORKER_INDEX.computeIfAbsent(tid, k -> WORKER_INDEX.size());
         List<Map<String, Object>> pending = PENDING_BEFORE_HOOKS.get();
         if (!pending.isEmpty()) {
             List<Map<String, Object>> kids = hookGroup(slot, true);
@@ -376,6 +404,17 @@ public final class RlInternal {
     }
 
     public static void end(Throwable failure, boolean skipped, String skipReason) {
+        end(failure, skipped, skipReason, null);
+    }
+
+    /** A test that never ran because a before-hook failed: reported as
+     *  failed with the hook's error, the way the Node reporter treats a
+     *  beforeEach failure. */
+    public static void endFailedByHook(Throwable hookFailure, String hookTitle) {
+        end(hookFailure, false, null, hookTitle);
+    }
+
+    private static void end(Throwable failure, boolean skipped, String skipReason, String failedHook) {
         TestSlot slot = CURRENT.get();
         if (slot == null) return;
         if (skipped && skipReason != null && !skipReason.isEmpty()) slot.skipReason = firstLine(skipReason, 200);
@@ -394,10 +433,39 @@ public final class RlInternal {
             slot.outcome = "skipped";
         } else if (failure != null) {
             slot.outcome = "failed";
-            slot.errorMessage = MASKER.maskText(String.valueOf(failure.getMessage()));
+            String shown = ErrorExplainer.displayMessage(failure);
+            if (failedHook != null) shown = failedHook + " failed: " + shown;
+            slot.errorMessage = MASKER.maskText(shown);
+            try {
+                StackTraceElement frame = SourceLocator.frameIn(failure, slot.testClass);
+                Class<?> where = null; int line = 0; String sourceLine = null;
+                if (frame != null && frame.getLineNumber() > 0) {
+                    where = slot.testClass != null && frame.getClassName().equals(slot.testClass.getName()) ? slot.testClass : SourceLocator.classOf(frame);
+                    line = frame.getLineNumber();
+                } else if (slot.testClass != null && slot.testMethod != null) {
+                    // No frame in the test (a TestNG time-out kills it from another thread): point at the method.
+                    where = slot.testClass; line = SourceLocator.lineOf(where, slot.testMethod);
+                }
+                if (where != null && line > 0) {
+                    Map<String, Object> loc = new LinkedHashMap<>();
+                    loc.put("file", SourceLocator.relativeFile(where));
+                    loc.put("line", line);
+                    loc.put("column", 0);
+                    slot.errorLocation = loc;
+                    String snip = SourceLocator.snippet(where, line);
+                    if (snip != null) slot.errorSnippet = MASKER.maskText(snip);
+                    sourceLine = SourceLocator.line(where, line);
+                }
+                Map<String, Object> ex = ErrorExplainer.explain(failure, SourceLocator.playwrightAction(failure, slot.testClass), SourceLocator.locatorIn(sourceLine));
+                if (ex != null) {
+                    if (failedHook != null) ex.put("summary", "The " + failedHook.split(" ")[0] + " hook failed, so the test never ran. " + ex.get("summary"));
+                    for (String k : new String[] { "summary", "hint", "locator" }) if (ex.get(k) != null) ex.put(k, MASKER.maskText(String.valueOf(ex.get(k))));
+                    slot.explain = ex;
+                }
+            } catch (Throwable ignore) { /* explain is decoration, never a failure */ }
             StringBuilder sb = new StringBuilder(1024);
             for (Throwable t = failure; t != null; t = t.getCause()) {
-                sb.append(t.getClass().getName()).append(": ").append(t.getMessage()).append('\n');
+                sb.append(t.getClass().getName()).append(": ").append(ErrorExplainer.unwrap(t.getMessage())).append('\n');
                 for (StackTraceElement el : t.getStackTrace()) {
                     sb.append("\tat ").append(el).append('\n');
                     if (sb.length() > 8000) break;
@@ -452,11 +520,48 @@ public final class RlInternal {
             }
             block.put("kind", "kv");
             block.put("kv", kv);
+        } else if (masked instanceof List && !((List<?>) masked).isEmpty() && ((List<?>) masked).stream().allMatch(x -> x instanceof Map)) {
+            // Rows from JSON / Excel / DB: one table, columns in first-seen order (same as the Node reporter).
+            List<String> columns = new ArrayList<>();
+            for (Object o : (List<?>) masked) for (Object k : ((Map<?, ?>) o).keySet()) if (!columns.contains(String.valueOf(k))) columns.add(String.valueOf(k));
+            List<List<String>> rows = new ArrayList<>();
+            for (Object o : (List<?>) masked) { List<String> r = new ArrayList<>(); for (String c : columns) r.add(stringify(((Map<?, ?>) o).get(c))); rows.add(r); }
+            block.put("kind", "table"); block.put("columns", columns); block.put("rows", rows);
+        } else if (masked instanceof CharSequence && looksLikeCsv(masked.toString())) {
+            String[] lines = masked.toString().replace("\r", "").trim().split("\n");
+            List<String> columns = splitCsv(lines[0]);
+            List<List<String>> rows = new ArrayList<>();
+            for (int i = 1; i < lines.length; i++) {
+                if (lines[i].trim().isEmpty()) continue;
+                List<String> cells = splitCsv(lines[i]);
+                for (int c = 0; c < cells.size(); c++) if (c < columns.size() && MASKER.sensitive(columns.get(c))) cells.set(c, "****");
+                rows.add(cells);
+            }
+            block.put("kind", "table"); block.put("columns", columns); block.put("rows", rows);
         } else {
             block.put("kind", "text");
             block.put("text", stringify(masked));
         }
         s.dataBlocks.add(block);
+    }
+
+    private static boolean looksLikeCsv(String s) {
+        String t = s.trim();
+        if (!t.contains("\n") || t.startsWith("{") || t.startsWith("[")) return false;
+        String[] lines = t.split("\n");
+        return lines.length >= 2 && lines[0].contains(",") && lines[1].contains(",");
+    }
+
+    private static List<String> splitCsv(String line) {
+        List<String> out = new ArrayList<>();
+        StringBuilder cur = new StringBuilder(); boolean q = false;
+        for (char c : line.toCharArray()) {
+            if (c == '"') q = !q;
+            else if (c == ',' && !q) { out.add(cur.toString().trim()); cur.setLength(0); }
+            else cur.append(c);
+        }
+        out.add(cur.toString().trim());
+        return out;
     }
 
     private static String stringify(Object v) {
@@ -478,8 +583,9 @@ public final class RlInternal {
         row.put("duration", durationMs);
         row.put("requestHeaders",  MASKER.apply(reqHeaders  == null ? Collections.emptyMap() : reqHeaders));
         row.put("responseHeaders", MASKER.apply(respHeaders == null ? Collections.emptyMap() : respHeaders));
-        if (reqBody  != null) row.put("requestBody",  reqBody);
-        if (respBody != null) row.put("responseBody", respBody);
+        // Bodies are text (JSON, form, XML): secret-looking fields inside them are masked too.
+        if (reqBody  != null) row.put("requestBody",  MASKER.maskText(reqBody));
+        if (respBody != null) row.put("responseBody", MASKER.maskText(respBody));
         s.apiCalls.add(row);
     }
 
@@ -530,14 +636,53 @@ public final class RlInternal {
 
     /** Builds the shared ReportData map and writes an HTML file to the given
      *  path. Returns the file path written. */
+    /** Record an error that belongs to no single test (a @BeforeSuite or
+     *  @BeforeClass that failed). Shown at the top of the report. */
+    public static void globalError(String context, Throwable t) {
+        Map<String, Object> e = new LinkedHashMap<>();
+        String msg = (context == null ? "" : context + ": ") + ErrorExplainer.displayMessage(t);
+        e.put("message", MASKER.maskText(msg));
+        if (t != null) {
+            StringBuilder sb = new StringBuilder();
+            sb.append(t.getClass().getName()).append(": ").append(ErrorExplainer.unwrap(t.getMessage())).append('\n');
+            for (StackTraceElement el : t.getStackTrace()) { sb.append("\tat ").append(el).append('\n'); if (sb.length() > 4000) break; }
+            e.put("stack", MASKER.maskText(sb.toString()));
+            Map<String, Object> ex = ErrorExplainer.explain(t);
+            if (ex != null) e.put("explain", ex);
+        }
+        GLOBAL_ERRORS.add(e);
+    }
+    static List<Map<String, Object>> globalErrors() { return new ArrayList<>(GLOBAL_ERRORS); }
+
+    /** Run something right before the report is built, when every test has
+     *  finished (an add-on attaches files that only exist by then). */
+    public static void beforeWrite(Runnable r) { if (r != null) BEFORE_WRITE.add(r); }
+
+    /** The folder the report is being written to; valid inside beforeWrite. */
+    public static java.io.File outputDir() { return OUTPUT_DIR; }
+
+    /** Attach a file that lives next to the report (assets/…): the report
+     *  links to it instead of inlining it. */
+    public static void attachFile(TestSlot slot, String name, String contentType, String relativeSrc, long size) {
+        if (slot == null) return;
+        Map<String, Object> a = new LinkedHashMap<>();
+        a.put("name", name);
+        a.put("contentType", contentType);
+        a.put("size", size);
+        a.put("src", relativeSrc);
+        slot.attachments.add(a);
+    }
+
     public static String writeReport(String outputFolder) {
         if (outputFolder == null || outputFolder.isEmpty()) outputFolder = "reporting-labs";
-        Map<String, Object> data = ReportBuilder.build(new ArrayList<>(FINISHED.values()), SUITE_START);
-        String html = TemplateRenderer.render(data);
         java.io.File dir = new java.io.File(outputFolder);
         if (!dir.exists() && !dir.mkdirs()) {
             throw new IllegalStateException("reporting-labs: could not create " + dir.getAbsolutePath());
         }
+        OUTPUT_DIR = dir;
+        for (Runnable r : new ArrayList<>(BEFORE_WRITE)) { try { r.run(); } catch (Throwable ignore) {} }
+        Map<String, Object> data = ReportBuilder.build(new ArrayList<>(FINISHED.values()), SUITE_START);
+        String html = TemplateRenderer.render(data);
         java.io.File out = new java.io.File(dir, Config.outputFile());
         try (java.io.OutputStream fos = new java.io.FileOutputStream(out)) {
             fos.write(html.getBytes(java.nio.charset.StandardCharsets.UTF_8));
