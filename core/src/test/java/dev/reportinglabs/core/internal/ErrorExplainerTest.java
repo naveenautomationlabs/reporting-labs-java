@@ -10,6 +10,14 @@ class ErrorExplainerTest {
 
     private static Map<String, Object> x(Throwable t) { return ErrorExplainer.explain(t); }
 
+    @Test void cucumberUndefinedStep() {
+        Map<String, Object> e = x(new RuntimeException("The step 'I archive all orders' is undefined.\nYou can implement this step using the snippet(s) below:\n\n@When(\"I archive all orders\")"));
+        assertEquals("undefined-step", e.get("kind"));
+        assertTrue(String.valueOf(e.get("summary")).startsWith("No step definition matches \"I archive all orders\""), String.valueOf(e.get("summary")));
+        Map<String, Object> p = x(new RuntimeException("The step 'I archive all orders' is pending: its step definition throws PendingException."));
+        assertEquals("pending-step", p.get("kind"));
+    }
+
     @Test void testngAssertion() {
         Map<String, Object> e = x(new AssertionError("cart total expected [₹ 89.90] but found [₹ 109.90]"));
         assertEquals("assertion", e.get("kind"));

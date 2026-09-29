@@ -10,9 +10,9 @@
     <version>0.1.13</version>
   </parent>
 
-  <artifactId>reporting-labs-playwright</artifactId>
-  <name>reportingLabs (Playwright)</name>
-  <description>Playwright for Java auto-capture: attach a Page once with RlPlaywright.attach(page) and the report records every request, saves a trace, and screenshots on failure.</description>
+  <artifactId>reporting-labs-cucumber</artifactId>
+  <name>reportingLabs (Cucumber JVM)</name>
+  <description>Cucumber JVM plugin for reportingLabs — one report row per scenario, named after the scenario and pointing at the feature file, with Given/When/Then as steps, hooks, data tables and tags as priority/severity/owner.</description>
   <url>https://reportinglabs.dev</url>
 
   <dependencies>
@@ -21,8 +21,8 @@
       <artifactId>reporting-labs-core</artifactId>
     </dependency>
     <dependency>
-      <groupId>com.microsoft.playwright</groupId>
-      <artifactId>playwright</artifactId>
+      <groupId>io.cucumber</groupId>
+      <artifactId>cucumber-plugin</artifactId>
       <scope>provided</scope>
     </dependency>
   </dependencies>

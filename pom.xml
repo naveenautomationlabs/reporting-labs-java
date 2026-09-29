@@ -6,7 +6,7 @@
 
   <groupId>dev.reportinglabs</groupId>
   <artifactId>reporting-labs-parent</artifactId>
-  <version>0.1.12</version>
+  <version>0.1.13</version>
   <packaging>pom</packaging>
 
   <name>reportingLabs (parent)</name>
@@ -55,6 +55,7 @@
     <module>playwright</module>
     <module>selenium</module>
     <module>rest-assured</module>
+    <module>cucumber</module>
   </modules>
 
   <properties>
@@ -68,6 +69,7 @@
     <playwright.version>1.47.0</playwright.version>
     <selenium.version>4.20.0</selenium.version>
     <rest-assured.version>5.3.0</rest-assured.version>
+    <cucumber.version>7.15.0</cucumber.version>
   </properties>
 
   <dependencyManagement>
@@ -106,6 +108,11 @@
         <groupId>io.rest-assured</groupId>
         <artifactId>rest-assured</artifactId>
         <version>${rest-assured.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.cucumber</groupId>
+        <artifactId>cucumber-plugin</artifactId>
+        <version>${cucumber.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>

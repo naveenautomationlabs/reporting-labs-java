@@ -226,6 +226,7 @@ a{color:var(--accent)}
 .step .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .step .d{font:11px var(--mono);color:var(--ink-3)}
 .step.bad{color:var(--fail)} .step.bad .t{font-weight:500}
+.step.skip .t,.step.skip .kw,.step.skip .d{color:var(--ink-3);font-style:italic}
 .step .e{font:12px var(--mono);color:var(--fail);padding:2px 0 6px 28px;white-space:pre-wrap}
 li.collapsed>ul{display:none}
 .att{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
@@ -1531,10 +1532,10 @@ function renderDetail(t){
 }
 function stepTree(steps, total){
   return h('ul',{class:'steps'}, steps.map(s=>{
-    const bad=!!s.error, kids=s.steps.length>0, pct=total?Math.min(100,s.duration/total*100):0;
+    const bad=!!s.error, skip=s.status==='skipped', kids=s.steps.length>0, pct=total?Math.min(100,s.duration/total*100):0;
     const li=h('li',{class:kids&&!hasError(s)?'collapsed':''});
-    const row=h('div',{class:'step'+(bad?' bad':'')},
-      h('span',{class:'tw'}, kids? '▸' : ''), data.bdd?null:h('span',{class:'cat'},s.category), gherkin(s.title), total? h('span',{class:'tb',title:Math.round(pct)+'% of the test'}, h('i',{class:pct>=30?'slow':'',style:'width:'+Math.max(pct,s.duration>0?1.5:0)+'%'})) : null, h('span',{class:'d'},ms(s.duration)));
+    const row=h('div',{class:'step'+(bad?' bad':'')+(skip?' skip':'')},
+      h('span',{class:'tw'}, kids? '▸' : ''), data.bdd?null:h('span',{class:'cat'},s.category), gherkin(s.title), total&&!skip? h('span',{class:'tb',title:Math.round(pct)+'% of the test'}, h('i',{class:pct>=30?'slow':'',style:'width:'+Math.max(pct,s.duration>0?1.5:0)+'%'})) : null, h('span',{class:'d'},skip?'not run':ms(s.duration)));
     if(kids){ row.style.cursor='pointer'; row.addEventListener('click',()=>{li.classList.toggle('collapsed'); row.querySelector('.tw').textContent=li.classList.contains('collapsed')?'▸':'▾';}); if(!li.classList.contains('collapsed')) row.querySelector('.tw').textContent='▾'; }
     li.append(row); if(bad) li.append(h('div',{class:'e'},s.error)); if(kids) li.append(stepTree(s.steps, total));
     return li;
@@ -1593,7 +1594,7 @@ function bugModel(t){
   const r=t.results[t.results.length-1], e=r&&r.errors[0], x=e&&e.explain, msg=e?e.message:'';
   const ex=msg.match(/^\s*(Expected[^:\n]{0,40}):[ \t]*(.+)$/m), rc=msg.match(/^\s*((?:Received|Actual|But was)[^:\n]{0,40}):[ \t]*(.+)$/m);
   const si=sinceInfo(t);
-  const steps=[]; const walk=(list,depth)=>{ for(const st of list){ if(st.category==='hook'||/^Attach "/.test(st.title)||/^Worker Cleanup/.test(st.title)) continue; const user=st.category==='test.step'; if(user||depth===0) steps.push({title:st.title.replace(/^(Given|When|Then|And|But)\s+/,m=>m), failed:!!st.error, user}); if(user&&st.steps.length&&!st.steps.some(c=>c.category==='test.step')) continue; if(st.steps.length) walk(st.steps,depth+1); } };
+  const steps=[]; const walk=(list,depth)=>{ for(const st of list){ if(st.category==='hook'||/^Attach "/.test(st.title)||/^Worker Cleanup/.test(st.title)) continue; const user=st.category==='test.step'; if(user||depth===0) steps.push({title:st.title.replace(/^(Given|When|Then|And|But)\s+/,m=>m)+(st.status==='skipped'?' (not run)':''), failed:!!st.error, user}); if(user&&st.steps.length&&!st.steps.some(c=>c.category==='test.step')) continue; if(st.steps.length) walk(st.steps,depth+1); } };
   if(r) walk(r.steps,0);
   const userSteps=steps.filter(s=>s.user); const repro=(userSteps.length?userSteps:steps).filter(s=>!/^Expect "/.test(s.title)||s.failed);
   const env=[]; if(data.options.project&&data.options.project.name) env.push(['Application', data.options.project.name+(data.options.project.version?' v'+data.options.project.version:'')]);

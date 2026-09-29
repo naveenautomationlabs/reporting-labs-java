@@ -10,14 +10,32 @@
     <version>0.1.13</version>
   </parent>
 
-  <artifactId>example-testng</artifactId>
-  <name>reportingLabs (example — TestNG)</name>
+  <artifactId>example-cucumber-testng</artifactId>
+  <name>reportingLabs (example — Cucumber JVM on the TestNG runner)</name>
 
   <dependencies>
     <dependency>
       <groupId>dev.reportinglabs</groupId>
       <artifactId>reporting-labs-testng</artifactId>
       <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>dev.reportinglabs</groupId>
+      <artifactId>reporting-labs-cucumber</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.cucumber</groupId>
+      <artifactId>cucumber-java</artifactId>
+      <version>${cucumber.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.cucumber</groupId>
+      <artifactId>cucumber-testng</artifactId>
+      <version>${cucumber.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>

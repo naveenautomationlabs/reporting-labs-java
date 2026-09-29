@@ -25,12 +25,12 @@ public final class RlInternal {
 
     public static final class TestSlot {
         final String id;              // stable id across processes; project|file|line|title
-        final String key;             // same as id for now; keeps the JS field name
-        final String title;
-        final String file;
-        final int line;
+        String key;                   // same as id for now; keeps the JS field name
+        String title;
+        String file;
+        int line;
         final String projectName;
-        final List<String> path;      // describe blocks, class chain, package tail
+        List<String> path;            // describe blocks, class chain, package tail
         final Map<String, String> meta = new LinkedHashMap<>();
         final List<String> tags = new ArrayList<>();
         final List<Map<String, Object>> logs = new ArrayList<>();
@@ -63,6 +63,8 @@ public final class RlInternal {
         String errorStack;
         String errorSnippet;                 // code around the failing line, when the source is found
         Map<String, Object> errorLocation;   // { file, line, column }
+        Map<String, Object> errorLocationHint; // set by a plugin that knows better than the stack (feature file line)
+        String errorSnippetHint;
         Map<String, Object> explain;         // plain-language reading of the failure
         String skipReason;            // SkipException / @Disabled / assumption message
         /** The test class and method, for source lookups. */
@@ -92,6 +94,7 @@ public final class RlInternal {
     }
 
     private static final ThreadLocal<TestSlot> CURRENT = new ThreadLocal<>();
+    private static final java.util.regex.Pattern ANSI = java.util.regex.Pattern.compile("\u001b\\[[0-9;]*[A-Za-z]");
     // Frameworks fire their "test finished" listener BEFORE @AfterMethod /
     // @AfterEach run, so a screenshot attached from an after-hook arrives once
     // CURRENT is already cleared. Remember the slot that just ended on this
@@ -164,6 +167,51 @@ public final class RlInternal {
 
     /** Add a tag to the current test (framework bindings use this for
      *  TestNG groups, JUnit tags, etc.). No-op outside a test. */
+    /** Re-describe the running test: a Cucumber scenario runs inside a
+     *  generic TestNG method ("Runs Cucumber Scenarios"); once the plugin
+     *  knows the scenario it points the row at the feature file instead. */
+    public static void relocate(String title, String file, int line, List<String> path) {
+        TestSlot s = CURRENT.get();
+        if (s == null) return;
+        if (title != null && !title.isEmpty()) s.title = title;
+        if (file != null && !file.isEmpty()) s.file = file;
+        if (line > 0) s.line = line;
+        if (path != null) s.path = new ArrayList<>(path);
+        s.key = idOf(s.projectName, s.file, s.line, s.title);
+        s.testClass = null; s.testMethod = null;
+    }
+
+    /** Where the failure is, when a plugin knows better than the stack
+     *  trace: a Cucumber undefined step has no user frame at all, but the
+     *  feature file line is exactly what the reader wants. Wins over the
+     *  stack-derived location when set. */
+    public static void errorAt(String file, int line, String snippet) {
+        TestSlot s = CURRENT.get();
+        if (s == null || file == null || line <= 0) return;
+        Map<String, Object> loc = new LinkedHashMap<>();
+        loc.put("file", file); loc.put("line", line); loc.put("column", 0);
+        s.errorLocationHint = loc;
+        s.errorSnippetHint = snippet;
+    }
+
+    /** Closes a step the runner never executed (a Cucumber step after a
+     *  failed one). Shown greyed out as "not run". */
+    public static void stepSkip(Step step) {
+        if (step == null) return;
+        step.data.put("duration", 0L);
+        step.data.put("status", "skipped");
+        TestSlot s = currentOrLast();
+        if (s != null && s.openSteps.peek() == step.data) s.openSteps.pop();
+    }
+
+    /** Drop a pinned data block by name (e.g. framework parameters that a
+     *  plugin replaces with something more readable). */
+    public static void removeData(String name) {
+        TestSlot s = CURRENT.get();
+        if (s == null || name == null) return;
+        s.dataBlocks.removeIf(b -> name.equals(b.get("name")));
+    }
+
     public static void tag(String tag) {
         TestSlot s = CURRENT.get();
         if (s != null && tag != null && !tag.isEmpty()) s.tags.add(tag);
@@ -368,6 +416,8 @@ public final class RlInternal {
      *  just ended on this thread). Called by ConsoleCapture. */
     public static void console(boolean err, String line) {
         if (line == null || line.startsWith("[reporting-labs]")) return;
+        // Colour codes from pretty printers (Cucumber, logback) are noise in HTML.
+        line = ANSI.matcher(line).replaceAll("");
         // The template joins chunks with '' and splits on '\n' (Node stores
         // raw console chunks), so each stored line keeps its newline.
         String text = MASKER.maskText(line.length() > 2000 ? line.substring(0, 2000) + "…" : line) + "\n";
@@ -446,7 +496,10 @@ public final class RlInternal {
                     // No frame in the test (a TestNG time-out kills it from another thread): point at the method.
                     where = slot.testClass; line = SourceLocator.lineOf(where, slot.testMethod);
                 }
-                if (where != null && line > 0) {
+                if (slot.errorLocationHint != null) {
+                    slot.errorLocation = slot.errorLocationHint;
+                    if (slot.errorSnippetHint != null) slot.errorSnippet = MASKER.maskText(slot.errorSnippetHint);
+                } else if (where != null && line > 0) {
                     Map<String, Object> loc = new LinkedHashMap<>();
                     loc.put("file", SourceLocator.relativeFile(where));
                     loc.put("line", line);

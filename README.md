@@ -5,7 +5,7 @@
 
 Turn a Java test run into **one HTML file** you can share. No server, no login, no expiry. Open it in a browser, attach it to a Jira ticket, drop it in Slack — it just works.
 
-Six Maven artifacts, all under the `dev.reportinglabs` groupId. Pick the one for your test framework, then add the one for your tool:
+Seven Maven artifacts, all under the `dev.reportinglabs` groupId. Pick the one for your test framework, then add the one for your tool:
 
 | Artifact | What it is |
 |---|---|
@@ -14,13 +14,14 @@ Six Maven artifacts, all under the `dev.reportinglabs` groupId. Pick the one for
 | `reporting-labs-selenium` | Zero code: finds the WebDriver on your test instance, records every open/click/type as a step, screenshots per policy |
 | `reporting-labs-rest-assured` | Zero code: registers a recording filter, every request lands in the API tab with headers, bodies, status and timing |
 | `reporting-labs-playwright` | One line, `RlPlaywright.attach(page)`: API calls, trace, screenshot and video per policy |
+| `reporting-labs-cucumber` | Cucumber JVM plugin: one row per scenario, named after it, at its feature-file line, with Given/When/Then as steps. TestNG runner or JUnit Platform engine |
 | `reporting-labs-core` | Engine, annotations, `Rl.*` helpers. Comes with the two above; use it alone from plain code |
 
 Every port (Node.js, Java) renders the same HTML template. A Java team's report is byte-for-byte the report a JavaScript team opens.
 
 ## Install
 
-Step by step, with screenshots, per tool: [Selenium](https://reportinglabs.dev/get-started/java/selenium) · [Playwright](https://reportinglabs.dev/get-started/java/playwright) · [REST Assured](https://reportinglabs.dev/get-started/java/rest-assured) · [Other tools](https://reportinglabs.dev/get-started/java/other-tools).
+Step by step, with screenshots, per tool: [Selenium](https://reportinglabs.dev/get-started/java/selenium) · [Playwright](https://reportinglabs.dev/get-started/java/playwright) · [REST Assured](https://reportinglabs.dev/get-started/java/rest-assured) · [Cucumber](https://reportinglabs.dev/get-started/java/cucumber) · [Other tools](https://reportinglabs.dev/get-started/java/other-tools).
 
 **TestNG:**
 
@@ -28,7 +29,7 @@ Step by step, with screenshots, per tool: [Selenium](https://reportinglabs.dev/g
 <dependency>
   <groupId>dev.reportinglabs</groupId>
   <artifactId>reporting-labs-testng</artifactId>
-  <version>0.1.12</version>
+  <version>0.1.13</version>
   <scope>test</scope>
 </dependency>
 ```
@@ -41,7 +42,7 @@ Nothing to register: the listener is found through ServiceLoader. If you keep a 
 <dependency>
   <groupId>dev.reportinglabs</groupId>
   <artifactId>reporting-labs-junit5</artifactId>
-  <version>0.1.12</version>
+  <version>0.1.13</version>
   <scope>test</scope>
 </dependency>
 ```
@@ -52,7 +53,7 @@ Then one line in `src/test/resources/junit-platform.properties`:
 junit.jupiter.extensions.autodetection.enabled=true
 ```
 
-**Your tool** (same version, `test` scope): `reporting-labs-selenium`, `reporting-labs-rest-assured` or `reporting-labs-playwright`.
+**Your tool** (same version, `test` scope): `reporting-labs-selenium`, `reporting-labs-rest-assured`, `reporting-labs-playwright` or `reporting-labs-cucumber`.
 
 Run `mvn test`. Open `target/reporting-labs/index.html` (Gradle: `build/reporting-labs/index.html`).
 
@@ -72,6 +73,18 @@ Add `reporting-labs-selenium`. Your `BaseTest`, `DriverFactory` and page objects
 ## REST Assured: zero code
 
 Add `reporting-labs-rest-assured`. The recording filter goes into `RestAssured.filters()` when the run starts (again after a `RestAssured.reset()`). Query and path params resolved, form fields and multipart part names, text bodies up to 200 KB, binary types as a placeholder, failed requests with status 0. `reporting-labs.restassured.autoRecord=false` turns it off.
+
+## Cucumber JVM: one property
+
+Add `reporting-labs-cucumber` and register the plugin once:
+
+```properties
+# src/test/resources/cucumber.properties (TestNG runner, JUnit 4 runner, CLI)
+# src/test/resources/junit-platform.properties (JUnit Platform engine)
+cucumber.plugin=dev.reportinglabs.cucumber.ReportingLabsPlugin
+```
+
+Every scenario is one row named after the scenario, at `orders.feature:13`, with the Gherkin steps (Background included) as steps, `@Before`/`@After` hooks in the hook groups, data tables and doc strings as data blocks, Scenario Outline rows titled with their example values. Tags become filters: `@P1` is the priority, `@blocker` the severity, `@owner:naveen` an owner chip, everything else a tag. An undefined step points at the feature line, and the steps after a failure show as "not run". With the TestNG runner add `reporting-labs-testng` as usual; with the JUnit Platform engine the plugin alone is enough. Selenium and REST Assured add-ons work inside step definitions unchanged.
 
 ## Playwright for Java: one line
 
@@ -180,7 +193,7 @@ reportingLabs sits on the framework's `@Test` lifecycle — it does not care wha
 - Selenium and Appium (`reporting-labs-selenium`)
 - REST Assured (`reporting-labs-rest-assured`)
 - Playwright for Java (`reporting-labs-playwright`)
-- Cucumber JVM via the TestNG runner; Karate and Cucumber on the JUnit Platform engine are on the roadmap
+- Cucumber JVM (`reporting-labs-cucumber`), on the TestNG runner or the JUnit Platform engine; Karate is on the roadmap
 - Plain code, HttpClient, JDBC: `Rl.api()` and `Rl.testData()` by hand
 
 ## Requirements

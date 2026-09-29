@@ -35,6 +35,8 @@ public final class ErrorExplainer {
         LABELS.put("script", "Error in test code");
         LABELS.put("file", "File not found");
         LABELS.put("thrown", "Test threw an error");
+        LABELS.put("undefined-step", "Step has no step definition");
+        LABELS.put("pending-step", "Step definition not written yet");
     }
 
     /** Playwright for Java wraps the driver's message as
@@ -108,6 +110,18 @@ public final class ErrorExplainer {
         if (action == null) action = actionHint;
         String url = pick(msg, "(?:navigating to|at|for)\\s+\"?(https?://[^\\s\"]+)");
         boolean pwTimeout = type.equals("com.microsoft.playwright.TimeoutError");
+
+        // ── Cucumber: a Gherkin step with no glue, or glue still pending ──
+        String undefinedStep = pick(msg, "^(?:UndefinedStepException: )?The step '(.+?)' is undefined");
+        if (undefinedStep != null) {
+            return out("undefined-step", "No step definition matches \"" + undefinedStep + "\", so the scenario stopped there and the steps after it did not run.",
+                "Write a method annotated @Given/@When/@Then whose expression matches this text, in a class under your glue package. Cucumber printed a ready-to-paste snippet in the console.");
+        }
+        String pendingStep = pick(msg, "^The step '(.+?)' is pending");
+        if (pendingStep != null || type.endsWith("PendingException")) {
+            return out("pending-step", "The step definition for " + (pendingStep != null ? "\"" + pendingStep + "\"" : "this step") + " still throws PendingException.",
+                "Replace the throw new PendingException() body with the real implementation.");
+        }
 
         // ── Test time-outs ────────────────────────────────────────────────
         Matcher m = Pattern.compile("didn't finish within the time-out (\\d+)").matcher(msg);
