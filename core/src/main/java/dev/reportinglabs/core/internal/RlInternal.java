@@ -118,7 +118,7 @@ public final class RlInternal {
     private static final AtomicInteger IDX = new AtomicInteger();
     private static final java.util.concurrent.atomic.AtomicLong SEQ = new java.util.concurrent.atomic.AtomicLong();
     private static final long SUITE_START = System.currentTimeMillis();
-    private static final Masker MASKER = new Masker(Config.maskKeys());
+    private static final Masker MASKER = new Masker(Config.maskKeys(), Config.maskValues(), Config.maskFromEnv());
 
     /** Every thread that runs at least one test lands here. The unique
      *  count is the real number of concurrent workers this suite used,

@@ -347,6 +347,10 @@ public final class Config {
     /** Extra case-insensitive substrings to mask in testData / API headers,
      *  on top of the built-in defaults (password, token, authorization…). */
     public static List<String> maskKeys()  { return getList("maskKeys", Collections.emptyList()); }
+    /** Literal values to blank wherever they appear (the test password, a token): reporting-labs.maskValues=a,b */
+    public static List<String> maskValues() { return getList("maskValues", Collections.emptyList()); }
+    /** Learn the values of PASSWORD / API_TOKEN / *_SECRET environment variables and -D properties (default true). */
+    public static boolean maskFromEnv()     { return getBool("maskFromEnv", true); }
 
     // ---------- charts / dimensions ----------
 

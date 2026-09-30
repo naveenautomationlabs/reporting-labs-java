@@ -62,7 +62,7 @@ Run `mvn test`. Open `target/reporting-labs/index.html` (Gradle: `build/reportin
 - Every test with its real source line (`OrdersApiTest.java:42`); on failure the failing line, a code snippet and a plain-language reading of the error (element not found, assertion with expected/actual, site unreachable, test timed out, hook failed), for Playwright, Selenium, TestNG, JUnit and AssertJ errors.
 - Before/After hooks with timings, `Rl.step()` groups, Selenium and Playwright actions, `System.out` / `System.err` lines, retries grouped as attempts and marked flaky, DataProvider rows as Parameters.
 - API calls with headers, bodies and Copy as cURL. Screenshots, traces and videos per policy.
-- Secrets masked everywhere: headers, bodies, log lines, console output, data blocks, error messages, even `"password", "x"` literals in a code snippet.
+- Secrets masked everywhere: headers, bodies, log lines, console output, data blocks, error messages, even `"password", "x"` literals in a code snippet. The masker remembers every value it has masked (and the values of `PASSWORD` / `API_TOKEN` / `*_SECRET` environment variables), so a secret that later appears with no key at all (`Logging in as admin / s3cret`) is blanked too. `reporting-labs.maskValues` adds values it cannot know about.
 - Trend, new vs known failures, flaky history and got-slower across runs, from `reporting-labs.history.json`.
 - One lane per worker thread on the Timeline.
 
