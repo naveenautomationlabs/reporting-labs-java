@@ -209,6 +209,8 @@ public final class Config {
     public static String theme()        { return get("theme", "auto"); }
     public static String palette()      { return get("palette", "lab"); }
     public static String accent()       { return get("accent", ""); }
+    /** Your logo in the report header: a png/jpg/svg/gif/webp file (a path, or a test-classpath resource), an https URL, or a data URI. */
+    public static String logo()         { return get("logo", ""); }
     public static String customCss()    { return get("customCss", ""); }
     public static boolean embedFonts()  { return getBool("embedFonts", true); }
     public static boolean editorLinks() { return getBool("editorLinks", false); }

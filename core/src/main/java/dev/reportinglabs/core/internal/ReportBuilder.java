@@ -109,6 +109,8 @@ public final class ReportBuilder {
         options.put("theme",          Config.theme());
         options.put("palette",        Config.palette());
         options.put("accent",         Config.accent());
+        String logo = Logo.resolve(Config.logo());
+        if (logo != null) options.put("logo", logo);
         options.put("customCss",      Config.customCss());
         options.put("embedFonts",     Config.embedFonts());
         options.put("editorLinks",    Config.editorLinks());

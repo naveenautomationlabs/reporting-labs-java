@@ -219,6 +219,8 @@ Or once, in `src/test/resources/reporting-labs.properties`:
 
 ```properties
 reporting-labs.title=Nightly regression
+# your logo in the header: a file in src/test/resources (embedded), an https URL or a data URI
+reporting-labs.logo=logo.png
 reporting-labs.project.name=ShopLite Web
 reporting-labs.metadata.env=staging
 reporting-labs.links.story=https://shoplite.atlassian.net/browse/{id}
@@ -268,6 +270,7 @@ reportingLabs sits on the framework's `@Test` lifecycle — it does not care wha
 | `page.request()` calls missing from the API tab | The context is created inside the test body | `RlPlaywright.record(page.request())` and use the wrapper |
 | Cucumber rows titled "Runs Cucumber Scenarios" | The plugin is not registered | `cucumber.plugin=dev.reportinglabs.cucumber.ReportingLabsPlugin` in `cucumber.properties` (TestNG runner) or `junit-platform.properties` (JUnit Platform engine) |
 | Environment row split, `Test` = `data=…` | A space in the properties key | `reporting-labs.env.Test\ data=…` (0.1.15 also repairs the common case) |
+| Logo missing from the header | `reporting-labs.logo` points at a file that is not on the path or the test classpath (a warning names what was looked for) | Put `logo.png` in `src/test/resources` and set `reporting-labs.logo=logo.png`, or use an https URL |
 | Screenshot appears twice | Your `@AfterMethod` attaches one too | Keep either; an attachment named `screen.png` / `failure.png` from your hook replaces the automatic one |
 
 ## Requirements
