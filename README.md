@@ -222,7 +222,7 @@ reporting-labs.title=Nightly regression
 # your logo in the header: a file in src/test/resources (embedded), an https URL or a data URI
 reporting-labs.logo=logo.png
 reporting-labs.project.name=ShopLite Web
-# the env chip; when not set, -Denv / ENV / TEST_ENV / ENVIRONMENT is used
+# the env chip; a -Denv or ENV / TEST_ENV / ENVIRONMENT variable at runtime wins over this value
 reporting-labs.metadata.env=staging
 reporting-labs.links.story=https://shoplite.atlassian.net/browse/{id}
 reporting-labs.maskKeys=otp,pan

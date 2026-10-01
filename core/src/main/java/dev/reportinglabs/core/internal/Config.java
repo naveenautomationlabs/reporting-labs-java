@@ -262,10 +262,11 @@ public final class Config {
 
     // ---------- CI auto-detect ----------
 
-    /** The env chip when reporting-labs.metadata.env is not set: -Denv,
-     *  -Denvironment, -DtestEnv, or the ENV / TEST_ENV / ENVIRONMENT / APP_ENV
-     *  variable a pipeline job sets, so one suite run against dev, qa and
-     *  stage labels each report without a config change. Null when none. */
+    /** The env chip from the runtime: -Denv, -Denvironment, -DtestEnv, or
+     *  the ENV / TEST_ENV / ENVIRONMENT / APP_ENV variable a pipeline job
+     *  exports. Wins over metadata.env in the properties file (a runtime
+     *  value beats the file, like every other key), so one suite run against
+     *  dev, qa and stage labels each report with no config change. Null when none. */
     public static String detectedEnv() {
         for (String k : new String[] { "env", "environment", "testEnv", "test.env" }) {
             String v = System.getProperty(k);

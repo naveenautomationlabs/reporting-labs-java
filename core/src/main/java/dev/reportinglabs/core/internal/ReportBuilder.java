@@ -31,9 +31,12 @@ public final class ReportBuilder {
         // the user explicitly set. User wins if a key overlaps.
         Map<String, String> md = new LinkedHashMap<>();
         md.putAll(Config.ciDetected());
-        String envName = Config.detectedEnv();
-        if (envName != null) md.put("env", envName);
         md.putAll(Config.metadata());
+        // A runtime variable beats the properties file, the same precedence as every other key:
+        // the ENV a pipeline job exports labels the report even when the file says env=local.
+        // An explicit -Dreporting-labs.metadata.env still wins over it.
+        String envName = Config.detectedEnv();
+        if (envName != null && System.getProperty("reporting-labs.metadata.env") == null) md.put("env", envName);
         data.put("metadata",    md);
 
         data.put("projects",    Config.projects());
