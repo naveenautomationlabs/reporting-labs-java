@@ -229,6 +229,11 @@
                    on the portal (https://central.sonatype.com/publishing/deployments).
                    This also side-steps the 0.7.x poll-response parse bug. -->
               <waitUntil>uploaded</waitUntil>
+              <!-- Central counts every uploaded file against the monthly
+                   publishing limit. MD5 and SHA-1 are the only checksums it
+                   requires; SHA-256 and SHA-512 are optional and double the
+                   file count, so they are not generated. -->
+              <checksums>required</checksums>
             </configuration>
           </plugin>
         </plugins>
