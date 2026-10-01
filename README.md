@@ -222,7 +222,9 @@ reporting-labs.title=Nightly regression
 # your logo in the header: a file in src/test/resources (embedded), an https URL or a data URI
 reporting-labs.logo=logo.png
 reporting-labs.project.name=ShopLite Web
-# the env chip; a -Denv or ENV / TEST_ENV / ENVIRONMENT variable at runtime wins over this value
+# the env chip. Resolved in this order: -Dreporting-labs.metadata.env or REPORTING_LABS_METADATA_ENV,
+# the variable reporting-labs.envVar names, then -Denv / ENV / TEST_ENV / APP_ENV / any *_ENV variable,
+# then this value. A runtime value beats the file, as for every key.
 reporting-labs.metadata.env=staging
 reporting-labs.links.story=https://shoplite.atlassian.net/browse/{id}
 reporting-labs.maskKeys=otp,pan

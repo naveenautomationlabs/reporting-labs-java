@@ -32,11 +32,16 @@ public final class ReportBuilder {
         Map<String, String> md = new LinkedHashMap<>();
         md.putAll(Config.ciDetected());
         md.putAll(Config.metadata());
-        // A runtime variable beats the properties file, the same precedence as every other key:
-        // the ENV a pipeline job exports labels the report even when the file says env=local.
-        // An explicit -Dreporting-labs.metadata.env still wins over it.
-        String envName = Config.detectedEnv();
-        if (envName != null && System.getProperty("reporting-labs.metadata.env") == null) md.put("env", envName);
+        // Precedence for the env chip, highest first: -Dreporting-labs.metadata.env or
+        // REPORTING_LABS_METADATA_ENV (explicit, the reporter's own key, already merged by
+        // Config.metadata()); then the environment name found by convention (-Denv, ENV,
+        // TEST_ENV, APP_ENV, anything ending in _ENV, or the variable reporting-labs.envVar
+        // names), which beats metadata.env in the properties file as a runtime value beats
+        // the file everywhere else; then the file.
+        if (!Config.setAtRuntime("metadata.env")) {
+            String envName = Config.detectedEnv();
+            if (envName != null) md.put("env", envName);
+        }
         data.put("metadata",    md);
 
         data.put("projects",    Config.projects());

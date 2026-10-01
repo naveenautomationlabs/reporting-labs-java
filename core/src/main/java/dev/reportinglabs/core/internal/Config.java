@@ -268,14 +268,50 @@ public final class Config {
      *  value beats the file, like every other key), so one suite run against
      *  dev, qa and stage labels each report with no config change. Null when none. */
     public static String detectedEnv() {
-        for (String k : new String[] { "env", "environment", "testEnv", "test.env" }) {
-            String v = System.getProperty(k);
-            if (v != null && !v.trim().isEmpty()) return v.trim();
+        return detectedEnv(System.getenv(), System.getProperties(), envVar());
+    }
+
+    /** True when the key was given at runtime (-Dreporting-labs.<key> or REPORTING_LABS_<KEY>), not in the file. */
+    public static boolean setAtRuntime(String key) {
+        if (System.getProperty("reporting-labs." + key) != null) return true;
+        String envKey = "REPORTING_LABS_" + key.toUpperCase(Locale.ROOT).replace('.', '_').replace('-', '_');
+        String v = System.getenv(envKey);
+        return v != null && !v.trim().isEmpty();
+    }
+
+    /** Name of the variable that holds the environment name, for a project whose name the detection cannot guess. */
+    public static String envVar() { String v = get("envVar", ""); return v.isEmpty() ? null : v; }
+
+    /** Variables whose name ends in ENV but never hold an environment name. */
+    private static final Set<String> NOT_AN_ENV_VAR = new HashSet<>(Arrays.asList("GITHUB_ENV", "NODE_ENV", "BASH_ENV", "VIRTUAL_ENV",
+        "CONDA_DEFAULT_ENV", "RUNNER_ENVIRONMENT", "PIPENV_ACTIVE", "ZSH_ENV", "JAVA_ENV", "DOTNET_ENVIRONMENT", "ASPNETCORE_ENVIRONMENT", "HOSTING_ENVIRONMENT"));
+    /** Names every project seems to pick first, in order. */
+    private static final String[] ENV_VAR_NAMES = { "ENV", "TEST_ENV", "ENVIRONMENT", "APP_ENV", "TARGET_ENV", "RUN_ENV", "DEPLOY_ENV", "ENV_NAME",
+        "TEST_ENVIRONMENT", "TARGET_ENVIRONMENT", "CI_ENVIRONMENT_NAME", "DEPLOYMENT_ENVIRONMENT", "STAGE" };
+    private static final String[] ENV_PROPERTY_NAMES = { "env", "environment", "testEnv", "test.env", "app.env", "target.env", "spring.profiles.active" };
+    /** dev, qa, stage-2, app_qa, prod-eu: a short token, never a path, URL or sentence. */
+    private static boolean looksLikeEnvName(String v) { return v != null && v.trim().matches("[A-Za-z][\\w.-]{0,31}"); }
+
+    /** -Denv style properties first, then the variable named by envVar, then the usual variable
+     *  names, then any variable whose name ends in _ENV or _ENVIRONMENT (OPENCART_ENV, app_env).
+     *  Every project names it differently; this finds it without being told. Null when nothing fits. */
+    static String detectedEnv(Map<String, String> env, java.util.Properties props, String envVar) {
+        for (String k : ENV_PROPERTY_NAMES) { String v = props.getProperty(k); if (looksLikeEnvName(v)) return v.trim(); }
+        if (envVar != null) {
+            String v = env.get(envVar); if (v == null) v = env.get(envVar.toLowerCase(Locale.ROOT)); if (v == null) v = props.getProperty(envVar);
+            return looksLikeEnvName(v) ? v.trim() : null;
         }
-        for (String k : new String[] { "ENV", "TEST_ENV", "ENVIRONMENT", "APP_ENV" }) {
-            String v = System.getenv(k);
-            if (v != null && !v.trim().isEmpty()) return v.trim();
+        for (String k : ENV_VAR_NAMES) {
+            String v = env.get(k); if (v == null) v = env.get(k.toLowerCase(Locale.ROOT));
+            if (looksLikeEnvName(v)) return v.trim();
         }
+        List<String> wild = new ArrayList<>();
+        for (String k : env.keySet()) {
+            String u = k.toUpperCase(Locale.ROOT);
+            if ((u.endsWith("_ENV") || u.endsWith("_ENVIRONMENT") || u.endsWith("_ENV_NAME")) && !NOT_AN_ENV_VAR.contains(u)) wild.add(k);
+        }
+        Collections.sort(wild);
+        for (String k : wild) if (looksLikeEnvName(env.get(k))) return env.get(k).trim();
         return null;
     }
 
