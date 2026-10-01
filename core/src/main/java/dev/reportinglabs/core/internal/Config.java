@@ -262,6 +262,22 @@ public final class Config {
 
     // ---------- CI auto-detect ----------
 
+    /** The env chip when reporting-labs.metadata.env is not set: -Denv,
+     *  -Denvironment, -DtestEnv, or the ENV / TEST_ENV / ENVIRONMENT / APP_ENV
+     *  variable a pipeline job sets, so one suite run against dev, qa and
+     *  stage labels each report without a config change. Null when none. */
+    public static String detectedEnv() {
+        for (String k : new String[] { "env", "environment", "testEnv", "test.env" }) {
+            String v = System.getProperty(k);
+            if (v != null && !v.trim().isEmpty()) return v.trim();
+        }
+        for (String k : new String[] { "ENV", "TEST_ENV", "ENVIRONMENT", "APP_ENV" }) {
+            String v = System.getenv(k);
+            if (v != null && !v.trim().isEmpty()) return v.trim();
+        }
+        return null;
+    }
+
     /** Pulls build number, git branch and commit hash out of common CI env
      *  vars (GitHub Actions, Jenkins, GitLab CI, CircleCI, Travis, Buildkite,
      *  TeamCity, Azure Pipelines). Anything the user already set in

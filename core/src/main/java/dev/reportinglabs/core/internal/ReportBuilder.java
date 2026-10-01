@@ -31,6 +31,8 @@ public final class ReportBuilder {
         // the user explicitly set. User wins if a key overlaps.
         Map<String, String> md = new LinkedHashMap<>();
         md.putAll(Config.ciDetected());
+        String envName = Config.detectedEnv();
+        if (envName != null) md.put("env", envName);
         md.putAll(Config.metadata());
         data.put("metadata",    md);
 
