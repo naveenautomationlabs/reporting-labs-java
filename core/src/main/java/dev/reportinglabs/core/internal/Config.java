@@ -315,71 +315,72 @@ public final class Config {
         return null;
     }
 
-    /** Pulls build number, git branch and commit hash out of common CI env
+    /** Pulls git branch, commit hash and the CI name out of common CI env
      *  vars (GitHub Actions, Jenkins, GitLab CI, CircleCI, Travis, Buildkite,
      *  TeamCity, Azure Pipelines). Anything the user already set in
-     *  reporting-labs.metadata.<key> wins over the auto value.
-     *
-     *  Called by ReportBuilder — merges into data.metadata so the trend
-     *  chart's build label just works on any pipeline. */
+     *  reporting-labs.metadata.<key> wins over the auto value. The build
+     *  number is deliberately not a chip: it labels the trend (ciRunNumber)
+     *  and is shown only when the user sets metadata.build, as in the Node
+     *  reporter. */
     public static Map<String, String> ciDetected() {
         Map<String, String> out = new LinkedHashMap<>();
         String env = System.getenv("GITHUB_ACTIONS");
         if (env != null && !env.isEmpty()) {
-            put(out, "build",  System.getenv("GITHUB_RUN_NUMBER"));
             put(out, "branch", System.getenv("GITHUB_REF_NAME"));
             put(out, "commit", shortSha(System.getenv("GITHUB_SHA")));
             put(out, "ci",     "github-actions");
             return out;
         }
         if (System.getenv("JENKINS_URL") != null) {
-            put(out, "build",  System.getenv("BUILD_NUMBER"));
             put(out, "branch", System.getenv("GIT_BRANCH"));
             put(out, "commit", shortSha(System.getenv("GIT_COMMIT")));
             put(out, "ci",     "jenkins");
             return out;
         }
         if (System.getenv("GITLAB_CI") != null) {
-            put(out, "build",  System.getenv("CI_PIPELINE_IID"));
             put(out, "branch", System.getenv("CI_COMMIT_REF_NAME"));
             put(out, "commit", shortSha(System.getenv("CI_COMMIT_SHA")));
             put(out, "ci",     "gitlab-ci");
             return out;
         }
         if (System.getenv("CIRCLECI") != null) {
-            put(out, "build",  System.getenv("CIRCLE_BUILD_NUM"));
             put(out, "branch", System.getenv("CIRCLE_BRANCH"));
             put(out, "commit", shortSha(System.getenv("CIRCLE_SHA1")));
             put(out, "ci",     "circleci");
             return out;
         }
         if (System.getenv("TRAVIS") != null) {
-            put(out, "build",  System.getenv("TRAVIS_BUILD_NUMBER"));
             put(out, "branch", System.getenv("TRAVIS_BRANCH"));
             put(out, "commit", shortSha(System.getenv("TRAVIS_COMMIT")));
             put(out, "ci",     "travis");
             return out;
         }
         if (System.getenv("BUILDKITE") != null) {
-            put(out, "build",  System.getenv("BUILDKITE_BUILD_NUMBER"));
             put(out, "branch", System.getenv("BUILDKITE_BRANCH"));
             put(out, "commit", shortSha(System.getenv("BUILDKITE_COMMIT")));
             put(out, "ci",     "buildkite");
             return out;
         }
         if (System.getenv("TEAMCITY_VERSION") != null) {
-            put(out, "build",  System.getenv("BUILD_NUMBER"));
             put(out, "ci",     "teamcity");
             return out;
         }
         if (System.getenv("TF_BUILD") != null) {  // Azure Pipelines
-            put(out, "build",  System.getenv("BUILD_BUILDNUMBER"));
             put(out, "branch", System.getenv("BUILD_SOURCEBRANCHNAME"));
             put(out, "commit", shortSha(System.getenv("BUILD_SOURCEVERSION")));
             put(out, "ci",     "azure-pipelines");
             return out;
         }
         return out;
+    }
+
+    /** The run number of the CI system, used to label the trend when metadata.build is not set. */
+    public static String ciRunNumber() {
+        for (String k : new String[] { "GITHUB_RUN_NUMBER", "BUILD_NUMBER", "CI_PIPELINE_IID", "CIRCLE_BUILD_NUM", "TRAVIS_BUILD_NUMBER", "BUILDKITE_BUILD_NUMBER", "BUILD_BUILDNUMBER", "BITBUCKET_BUILD_NUMBER" }) {
+            String v = System.getenv(k);
+            if (v != null && !v.trim().isEmpty()) return "#" + v.trim();
+        }
+        return null;
     }
 
     private static void put(Map<String, String> out, String key, String value) {

@@ -27,8 +27,9 @@ public final class ReportBuilder {
         data.put("generatedAt", now);
         data.put("startTime",   suiteStart);
         data.put("duration",    Math.max(0, now - suiteStart));
-        // Merge CI-detected metadata (build / branch / commit / ci) with what
-        // the user explicitly set. User wins if a key overlaps.
+        // Merge CI-detected metadata (branch / commit / ci) with what the user
+        // explicitly set. User wins if a key overlaps. The build number is not a
+        // chip; it labels the trend below.
         Map<String, String> md = new LinkedHashMap<>();
         md.putAll(Config.ciDetected());
         md.putAll(Config.metadata());
@@ -233,10 +234,11 @@ public final class ReportBuilder {
                 } catch (Exception ignore) { /* corrupt or missing — start fresh */ }
             }
             Map<String, Object> row = new LinkedHashMap<>();
-            // Label is only used as the trend chart's x-axis tick. Leave it
-            // empty when no build id is configured — the template's JS then
-            // formats a short 'Sep 26' date instead of a millisecond epoch.
+            // Label is only used as the trend chart's x-axis tick: metadata.build,
+            // else the CI run number. Leave it empty on a local run — the template's
+            // JS then formats a short 'Sep 26' date instead of a millisecond epoch.
             String build = Config.metadata().get("build");
+            if (build == null) build = Config.ciRunNumber();
             row.put("label",    build == null ? "" : build);
             row.put("time",     now);
             row.put("duration", Math.max(0, now - start));
