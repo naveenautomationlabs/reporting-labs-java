@@ -29,7 +29,7 @@ Step by step, with screenshots, per tool: [Selenium](https://reportinglabs.dev/g
 <dependency>
   <groupId>dev.reportinglabs</groupId>
   <artifactId>reporting-labs-testng</artifactId>
-  <version>0.1.15</version>
+  <version>0.1.23</version>
   <scope>test</scope>
 </dependency>
 ```
@@ -42,7 +42,7 @@ Nothing to register: the listener is found through ServiceLoader. If you keep a 
 <dependency>
   <groupId>dev.reportinglabs</groupId>
   <artifactId>reporting-labs-junit5</artifactId>
-  <version>0.1.15</version>
+  <version>0.1.23</version>
   <scope>test</scope>
 </dependency>
 ```
