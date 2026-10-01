@@ -1300,8 +1300,27 @@ function errorSignature(msg){
 }
 function failureClusters(){
   const m=new Map();
-  for(const t of data.tests){ if(!isFail(t.outcome)) continue; const r=t.results[t.results.length-1]; const e=r&&r.errors[0]; const x=e&&e.explain; const sig=x&&!/^(thrown|script)$/.test(x.kind)? x.kind+'|'+(x.locator||x.url||'')+'|'+(x.matcher||x.action||'') : errorSignature(e?e.message:'(no error message)'); const c=m.get(sig)||{sig,sample:e?e.message.split('\n').slice(0,2).join('\n'):'(no error message)',why:e&&e.explain?e.explain:null,tests:[]}; c.tests.push(t); m.set(sig,c); }
+  for(const t of data.tests){ if(!isFail(t.outcome)) continue; const r=t.results[t.results.length-1]; const e=r&&r.errors[0]; const x=e&&e.explain; const msg=e?e.message:'(no error message)';
+    // One cluster per root cause: the explain kind plus what it points at. An explanation that points at
+    // nothing (a plain assertion) falls back to the message shape, so two different assertions stay apart.
+    const sig=x&&!/^(thrown|script)$/.test(x.kind)? x.kind+'|'+(x.locator||x.url||'')+'|'+(x.matcher||x.action||'')+(x.locator||x.url?'':'|'+messageShape(msg)) : errorSignature(msg);
+    const c=m.get(sig)||{sig,sample:msg.split('\n').map(l=>l.trim()).filter(Boolean).slice(0,3).join('\n'),why:x||null,tests:[]}; c.tests.push(t); m.set(sig,c); }
   return [...m.values()].sort((a,b)=>b.tests.length-a.tests.length);
+}
+// The message line shown under a cluster's explanation: the first line that says something the
+// explanation does not already say. Hamcrest's "Expected: is <200>" / "but: was <404>" is fully
+// covered by "The value was wrong: expected <200>, got <404>." so nothing is repeated.
+// The shape of a message: its first lines with numbers and quoted values blanked, so two assertions on
+// different values of the same kind cluster together, and assertions on different things stay apart.
+function messageShape(msg){ return String(msg||'').split('\n').map(l=>l.trim()).filter(Boolean).slice(0,3).map(errorSignature).join(' / '); }
+function cluToks(s){ const stop=/^(expected|expecting|but|is|was|were|received|actual|to|be|the|a|an|of|and|not|did|got|value|wrong|equal|have)$/; return new Set(String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').split(' ').filter(w=>w&&!stop.test(w))); }
+function clusterLine(c){
+  const lines=c.sample.split('\n').filter(Boolean); if(!c.why) return lines[0]||c.sample;
+  const have=cluToks(c.why.summary);
+  // "Error: " / "AssertionError: " prefixes carry nothing; the expect(received).toBe(expected) hint line of
+  // Jest-style matchers is a header, not a detail.
+  const bare=l=>l.replace(/^[\w.$]*(Error|Exception|Failure|Throwable)(:\s*|$)/,'');
+  return lines.find(l=>{ const b=bare(l); if(/^expect\(.*\)\.[\w.]+\(.*\)/.test(b)) return false; const t=[...cluToks(b)]; return t.length && t.some(w=>!have.has(w)); })||null;
 }
 function clustersView(cl){
   return h('ol',{class:'clu2'}, cl.map(c=>{
@@ -1310,7 +1329,7 @@ function clustersView(cl){
     const who=[]; names.forEach(([title,ts],k)=>{ if(k) who.push(h('span',{class:'sep'},'·')); who.push(h('button',{onclick:()=>select(ts[0].id),title:ts.map(t=>t.project).join(', ')}, title, data.projects.length>1&&ts.length>1? h('small',{},' ×'+ts.length) : null)); });
     if(extra>0) who.push(h('span',{class:'sep'},'·'), h('span',{class:'ex'},'+'+extra+' more'));
     return h('li',{}, h('span',{class:'n'}, c.tests.length, h('small',{},c.tests.length===1?'test':'tests')),
-      h('div',{class:'b'}, c.why? h('div',{class:'why-c'}, h('span',{class:'why-k'},c.why.label), ' ', c.why.summary) : null, h('div',{class:'msg',title:c.sample}, c.sample.split('\n')[0]), h('div',{class:'who'}, who)));
+      h('div',{class:'b'}, c.why? h('div',{class:'why-c'}, h('span',{class:'why-k'},c.why.label), ' ', c.why.summary) : null, (line=>line? h('div',{class:'msg',title:c.sample}, line):null)(clusterLine(c)), h('div',{class:'who'}, who)));
   }));
 }
 function trend(){

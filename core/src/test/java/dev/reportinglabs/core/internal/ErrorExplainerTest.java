@@ -24,6 +24,19 @@ class ErrorExplainerTest {
         assertEquals("cart total was wrong: expected ₹ 89.90, got ₹ 109.90.", e.get("summary"));
     }
 
+    @Test void hamcrestAssertion() {
+        // assertThat(code, is(200)): the but: line is indented and there is no reason line
+        Map<String, Object> e = x(new AssertionError("\nExpected: is <200>\n     but: was <404>"));
+        assertEquals("assertion", e.get("kind"));
+        assertEquals("The value was wrong: expected <200>, got <404>.", e.get("summary"));
+        // assertThat("status code", code, is(200)): the reason names the value
+        Map<String, Object> r = x(new AssertionError("status code\nExpected: is <200>\n     but: was <404>"));
+        assertEquals("status code was wrong: expected <200>, got <404>.", r.get("summary"));
+        // equalTo(): no is/was prefix to strip
+        Map<String, Object> q = x(new AssertionError("\nExpected: \"Sign in\"\n     but: was \"Reset\""));
+        assertEquals("The value was wrong: expected \"Sign in\", got \"Reset\".", q.get("summary"));
+    }
+
     @Test void junitAssertion() {
         Map<String, Object> e = x(new AssertionError("title ==> expected: <Sign in> but was: <Reset your password>"));
         assertEquals("assertion", e.get("kind"));

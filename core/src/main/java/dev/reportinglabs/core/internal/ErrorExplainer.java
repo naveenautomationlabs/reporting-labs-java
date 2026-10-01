@@ -202,8 +202,14 @@ public final class ErrorExplainer {
             if (m.find()) { expected = m.group(1); received = m.group(2); }
             if (expected == null) { m = Pattern.compile("expected:\\s*<(.*?)> but was:\\s*<(.*?)>", Pattern.DOTALL).matcher(msg); if (m.find()) { expected = m.group(1); received = m.group(2); } }   // JUnit
             if (expected == null) { m = Pattern.compile("[Ee]xpecting[^\\n]*\\n?\\s*<?\"?(.*?)\"?>?\\s*\\n?\\s*(?:to be equal to|but was)[:\\s]*<?\"?(.*?)\"?>?\\s*$", Pattern.DOTALL).matcher(msg); if (m.find() && has(msg, "but was|to be equal to")) { received = m.group(1).trim(); expected = m.group(2).trim(); } }  // AssertJ
-            if (expected == null) { String e = pick(msg, "^Expected(?:[^:\\n]{0,40})?:[ \\t]*(.+)$"), r = pick(msg, "^(?:but: |Received|Actual)(?:[^:\\n]{0,40})?:?[ \\t]*(.+)$"); if (e != null && r != null) { expected = e; received = r; } }  // Hamcrest
-            String custom = first.replaceFirst("\\s*expected \\[.*$", "").replaceFirst("\\s*==>.*$", "").replaceFirst("\\s*expected:.*$", "").trim();
+            if (expected == null) {
+                // Hamcrest: "[reason]\nExpected: is <200>\n     but: was <404>" (the but: line is indented);
+                // Playwright/Jest shape: "Expected: x\nReceived: y"; REST Assured: "Expected: x\n  Actual: y".
+                String e = pick(msg, "^\\s*Expected(?:[^:\\n]{0,40})?:[ \\t]*(.+)$"), r = pick(msg, "^\\s*(?:but|Received|Actual)(?:[^:\\n]{0,40})?:[ \\t]*(.+)$");
+                if (e != null && r != null) { expected = e.trim().replaceFirst("^is\\s+", ""); received = r.trim().replaceFirst("^was\\s+", ""); }
+            }
+            // The reason the test gave, if any: the first line unless that line is itself the expected/actual pair.
+            String custom = first.replaceFirst("\\s*expected \\[.*$", "").replaceFirst("\\s*==>.*$", "").replaceFirst("\\s*expected:.*$", "").replaceFirst("(?i)^expected\\b.*$", "").trim();
             if (expected != null && received != null) {
                 String who = !custom.isEmpty() && !custom.startsWith("expected") ? custom : "The value";
                 String hint = expected.equalsIgnoreCase(received) && !expected.equals(received) ? "Only the letter case differs." : "Compare expected and received below. A copy change, a data change or a timing issue are the usual causes.";

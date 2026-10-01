@@ -6,7 +6,7 @@
 
   <groupId>dev.reportinglabs</groupId>
   <artifactId>reporting-labs-parent</artifactId>
-  <version>0.1.22</version>
+  <version>0.1.23</version>
   <packaging>pom</packaging>
 
   <name>reportingLabs (parent)</name>
