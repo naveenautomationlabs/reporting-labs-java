@@ -550,7 +550,7 @@ html,body{-webkit-font-smoothing:antialiased}
 .clu2 .n{font-size:20px;font-weight:600;color:var(--fail);font-variant-numeric:tabular-nums;line-height:1.1} .clu2 .n small{display:block;font-size:10.5px;color:var(--ink-3);font-weight:500;letter-spacing:.04em;margin-top:1px}
 .clu2 .b{min-width:0} .clu2 .msg{font:12.5px/1.45 var(--mono);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .clu2 .who{font-size:12.5px;color:var(--ink-2);margin-top:4px;line-height:1.6} .clu2 .who button{color:var(--accent-2);font-weight:500} .clu2 .who button:hover{text-decoration:underline} .clu2 .who button small{color:var(--ink-3);font-weight:400;font-size:11px}
-.clu2 .who .sep{color:var(--line-2);margin:0 7px} .clu2 .who .ex{color:var(--ink-3)}
+.clu2 .who .sep{color:var(--line-2);margin:0 7px} .clu2 .who .ex,.clu2 .who button.ex{color:var(--ink-3);font-weight:400;cursor:pointer} .clu2 .who button.ex:hover{color:var(--accent-2);text-decoration:underline}
 @media (max-width:640px){.attn2 .ow{display:none} .attn2 .pr{width:72px} .attn2 .pr small{display:none}}
 /* ---------- run status, errors outside tests, snippets ---------- */
 .att-err{padding:12px 14px;background:var(--fail-bg);color:var(--ink);border-radius:8px 8px 0 0;line-height:1.5} .att-err code{font:12px var(--mono);background:var(--surface);padding:1px 5px;border-radius:4px}
@@ -1322,14 +1322,21 @@ function clusterLine(c){
   const bare=l=>l.replace(/^[\w.$]*(Error|Exception|Failure|Throwable)(:\s*|$)/,'');
   return lines.find(l=>{ const b=bare(l); if(/^expect\(.*\)\.[\w.]+\(.*\)/.test(b)) return false; const t=[...cluToks(b)]; return t.length && t.some(w=>!have.has(w)); })||null;
 }
+// The tests of a cluster, six by name and "+N more" for the rest; the +N more button expands the list
+// in place and "show fewer" folds it again. Each name opens that test.
+function clusterWho(byTitle, all){
+  const entries=[...byTitle.entries()], names=all?entries:entries.slice(0,6), extra=entries.length-names.length;
+  const who=[]; names.forEach(([title,ts],k)=>{ if(k) who.push(h('span',{class:'sep'},'·')); who.push(h('button',{onclick:()=>select(ts[0].id),title:ts.map(t=>t.project).join(', ')}, title, data.projects.length>1&&ts.length>1? h('small',{},' ×'+ts.length) : null)); });
+  const swap=(ev,toAll)=>{ const d=ev.currentTarget.closest('.who'); d.replaceChildren(); for(const n of clusterWho(byTitle,toAll)) d.append(n); };
+  if(extra>0) who.push(h('span',{class:'sep'},'·'), h('button',{class:'ex',onclick:ev=>swap(ev,true),title:'Show all '+entries.length+' tests'},'+'+extra+' more'));
+  else if(all&&entries.length>6) who.push(h('span',{class:'sep'},'·'), h('button',{class:'ex',onclick:ev=>swap(ev,false)},'show fewer'));
+  return who;
+}
 function clustersView(cl){
   return h('ol',{class:'clu2'}, cl.map(c=>{
     const byTitle=new Map(); for(const t of c.tests){ const g=byTitle.get(t.title)||[]; g.push(t); byTitle.set(t.title,g); }
-    const names=[...byTitle.entries()].slice(0,6), extra=byTitle.size-names.length;
-    const who=[]; names.forEach(([title,ts],k)=>{ if(k) who.push(h('span',{class:'sep'},'·')); who.push(h('button',{onclick:()=>select(ts[0].id),title:ts.map(t=>t.project).join(', ')}, title, data.projects.length>1&&ts.length>1? h('small',{},' ×'+ts.length) : null)); });
-    if(extra>0) who.push(h('span',{class:'sep'},'·'), h('span',{class:'ex'},'+'+extra+' more'));
     return h('li',{}, h('span',{class:'n'}, c.tests.length, h('small',{},c.tests.length===1?'test':'tests')),
-      h('div',{class:'b'}, c.why? h('div',{class:'why-c'}, h('span',{class:'why-k'},c.why.label), ' ', c.why.summary) : null, (line=>line? h('div',{class:'msg',title:c.sample}, line):null)(clusterLine(c)), h('div',{class:'who'}, who)));
+      h('div',{class:'b'}, c.why? h('div',{class:'why-c'}, h('span',{class:'why-k'},c.why.label), ' ', c.why.summary) : null, (line=>line? h('div',{class:'msg',title:c.sample}, line):null)(clusterLine(c)), h('div',{class:'who'}, clusterWho(byTitle,false))));
   }));
 }
 function trend(){
