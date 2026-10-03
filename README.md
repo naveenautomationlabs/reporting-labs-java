@@ -17,7 +17,7 @@ Seven Maven artifacts, all under the `dev.reportinglabs` groupId. Pick the one f
 | `reporting-labs-cucumber` | One property. A row per scenario at its feature-file line, Given/When/Then as steps, tags as filters. TestNG runner or JUnit Platform engine |
 | `reporting-labs-core` | Engine, annotations, `Rl.*` helpers. Comes with the bindings; use it alone from plain code |
 
-Every port (Node.js, Java) renders the same HTML template. A Java team's report is byte-for-byte the report a JavaScript team opens.
+Every port (Node.js, Java, Python) renders the same HTML template. A Java team's report is byte-for-byte the report a JavaScript or Python team opens.
 
 ## Install
 
@@ -282,6 +282,13 @@ reportingLabs sits on the framework's `@Test` lifecycle — it does not care wha
 - Maven 3.9+ or Gradle 8+
 - JUnit Jupiter 5.10+ or TestNG 7.5+
 - Selenium 4.x (Appium Java client 8+), Playwright for Java 1.47+, REST Assured 4.x to 6.x, Cucumber JVM 7.x (each only for its add-on)
+
+## Other languages
+
+The same report, from any stack, because every port renders one shared HTML template.
+
+- **Node.js** — `npm i -D reporting-labs` for Playwright. Source: [reporting-labs](https://github.com/naveenautomationlabs/reporting-labs). Guides: [reportinglabs.dev/get-started/nodejs](https://reportinglabs.dev/get-started/nodejs).
+- **Python** — `pip install reporting-labs` for pytest, Playwright, Selenium and Robot Framework. Source: [reporting-labs-python](https://github.com/naveenautomationlabs/reporting-labs-python). Guides: [reportinglabs.dev/get-started/python](https://reportinglabs.dev/get-started/python).
 
 ## Release notes
 
