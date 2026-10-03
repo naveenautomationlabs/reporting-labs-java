@@ -60,7 +60,7 @@ public final class Config {
     // free text. Everything else is an enum / boolean / number / list, where
     // a trailing "  # comment" can only be a comment.
     private static final String[] FREE_TEXT_PREFIXES = {
-        "title", "accent", "customCss", "outputFolder", "outputFile",
+        "title", "accent", "customCss", "outputFolder", "outputFile", "pdfFile", "chromePath",
         "project.", "metadata.", "links.", "env.", "sections.",
     };
 
@@ -142,6 +142,13 @@ public final class Config {
     }
 
     public static String outputFile()   { return get("outputFile", "index.html"); }
+
+    /** Also write a print-ready report.pdf next to the HTML, rendered by a headless Chrome / Chromium.
+     *  Default true; set reporting-labs.pdf=false to skip. The report also has an "Export PDF" button. */
+    public static boolean pdf()         { return getBool("pdf", true); }
+    public static String pdfFile()      { return get("pdfFile", "report.pdf"); }
+    /** Explicit path to a Chrome / Chromium binary; otherwise the usual locations are searched. */
+    public static String chromePath()   { String v = get("chromePath", ""); return v.isEmpty() ? null : v; }
 
     /** When to open the generated HTML in the default browser after the run.
      *  `never` (default) | `always` | `on-failure`. Auto-skipped when running

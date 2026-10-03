@@ -47,6 +47,8 @@ public final class ShutdownWriter {
                 String path = RlInternal.writeReport(Config.outputFolder());
                 // stdout so terminals don't paint the success line red.
                 System.out.println("[reporting-labs] wrote " + path);
+                String pdf = PdfWriter.write(path);
+                if (pdf != null) System.out.println("[reporting-labs] wrote " + pdf);
                 maybeOpen(path);
             } catch (Throwable t) {
                 System.err.println("[reporting-labs] failed to write report: " + t.getMessage());
