@@ -32,7 +32,7 @@ Step by step, with screenshots, per tool: [Selenium](https://reportinglabs.dev/g
 <dependency>
   <groupId>dev.reportinglabs</groupId>
   <artifactId>reporting-labs-testng</artifactId>
-  <version>0.1.26</version>
+  <version>0.1.27</version>
   <scope>test</scope>
 </dependency>
 ```
@@ -45,7 +45,7 @@ Nothing to register: the listener is found through ServiceLoader. If you keep a 
 <dependency>
   <groupId>dev.reportinglabs</groupId>
   <artifactId>reporting-labs-junit5</artifactId>
-  <version>0.1.26</version>
+  <version>0.1.27</version>
   <scope>test</scope>
 </dependency>
 ```
@@ -224,6 +224,11 @@ void placesAnOrder() { ... }
 `@P0` and `@critical` set priority and severity. Annotations and `Rl.meta()` win over the Javadoc. Javadoc's own tags
 (`@param`, `@throws`, `@see`, `@author`) and mentions in a sentence are ignored. Works with JUnit 5 (also `@Nested` and
 `@ParameterizedTest`) and TestNG. Turn it off with `reporting-labs.commentMeta=false`.
+
+**Type it once, not every time.** Add a Live Template in IntelliJ (Settings → Editor → Live Templates → **+**, abbreviation
+`rlmeta`, and under *No applicable contexts* click **Define** and tick **Java**), an Eclipse template, or a VS Code snippet;
+then type `rlmeta` + Tab above a test. The template text and step-by-step setup for each editor:
+[Install the editor snippets](https://reportinglabs.dev/features/meta-comments#install-the-editor-snippets).
 
 ## Configuration
 
