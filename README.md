@@ -65,7 +65,7 @@ Run `mvn test`. Open `target/reporting-labs/index.html` (Gradle: `build/reportin
 - Every test with its real source line (`OrdersApiTest.java:42`); on failure the failing line, a code snippet and a plain-language reading of the error (element not found, assertion with expected/actual, site unreachable, test timed out, hook failed), for Playwright, Selenium, TestNG, JUnit and AssertJ errors.
 - Before/After hooks with timings, `Rl.step()` groups, Selenium and Playwright actions, `System.out` / `System.err` lines, retries grouped as attempts and marked flaky, DataProvider rows as Parameters.
 - API calls with headers, bodies and Copy as cURL. Screenshots, traces and videos per policy.
-- Secrets masked everywhere: headers, bodies, log lines, console output, data blocks, error messages, even `"password", "x"` literals in a code snippet. The masker remembers every value it has masked (and the values of `PASSWORD` / `API_TOKEN` / `*_SECRET` environment variables), so a secret that later appears with no key at all (`Logging in as admin / s3cret`) is blanked too. `reporting-labs.maskValues` adds values it cannot know about.
+- Secrets masked everywhere, before anything is written. See [Secrets are masked](#secrets-are-masked).
 - Trend, new vs known failures, flaky history and got-slower across runs, from `reporting-labs.history.json`.
 - One lane per worker thread on the Timeline.
 
@@ -229,6 +229,30 @@ void placesAnOrder() { ... }
 `rlmeta`, and under *No applicable contexts* click **Define** and tick **Java**), an Eclipse template, or a VS Code snippet;
 then type `rlmeta` + Tab above a test. The template text and step-by-step setup for each editor:
 [Install the editor snippets](https://reportinglabs.dev/features/meta-comments#install-the-editor-snippets).
+
+## Secrets are masked
+
+Passwords, tokens and card numbers never reach the report. They are replaced with `****` **before** anything is
+written, with no setup.
+
+**Where:** API headers and bodies, log lines, console output, `Rl.testData()` blocks, error messages and step
+titles, even a `"password", "x"` literal in the code snippet of a failure. Selenium masks values typed into password
+fields.
+
+**It remembers.** Once a value has been masked (or comes from a `PASSWORD`, `API_TOKEN` or `*_SECRET` environment
+variable), it is masked everywhere it shows up later, even with no key around it: `Logging in as admin / s3cret`
+becomes `Logging in as admin / ****`.
+
+**Add your own** in `reporting-labs.properties`:
+
+```properties
+# extra key names to mask
+reporting-labs.maskKeys=otp,pan
+# exact values to mask wherever they appear
+reporting-labs.maskValues=a-value-it-cannot-know
+# false stops learning values from environment variables and -D properties
+reporting-labs.maskFromEnv=true
+```
 
 ## Configuration
 
