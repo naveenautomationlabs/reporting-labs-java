@@ -251,6 +251,8 @@ reporting-labs.project.name=ShopLite Web
 reporting-labs.metadata.env=staging
 reporting-labs.links.story=https://shoplite.atlassian.net/browse/{id}
 reporting-labs.maskKeys=otp,pan
+# meta from the Javadoc of a test method or class (annotations win); false turns it off
+reporting-labs.commentMeta=true
 
 # Selenium: never | on-failure | always | only-on-pass
 reporting-labs.selenium.screenshot=on-failure
