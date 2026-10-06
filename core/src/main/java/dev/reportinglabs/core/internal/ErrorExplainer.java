@@ -32,6 +32,7 @@ public final class ErrorExplainer {
         LABELS.put("test-timeout", "Test timed out");
         LABELS.put("hook-timeout", "Hook timed out");
         LABELS.put("closed", "Browser closed early");
+        LABELS.put("crashed", "Browser crashed");
         LABELS.put("script", "Error in test code");
         LABELS.put("file", "File not found");
         LABELS.put("thrown", "Test threw an error");
@@ -111,6 +112,12 @@ public final class ErrorExplainer {
         if (action == null) action = actionHint;
         String url = pick(msg, "(?:navigating to|at|for)\\s+\"?(https?://[^\\s\"]+)");
         boolean pwTimeout = type.equals("com.microsoft.playwright.TimeoutError");
+
+        // ── The browser process died (memory, too many workers): infrastructure, not the app or the test ──
+        if (Pattern.compile("Target crashed|Page crashed|page has crashed|Renderer process crashed|tab crashed|session deleted because of page crash|chrome not reachable|Browsing context has been discarded", Pattern.CASE_INSENSITIVE).matcher(msg).find()) {
+            return out("crashed", "The browser crashed while the test was running.",
+                "Not a bug in the app or the test: the browser process died, usually from memory pressure or too many parallel workers. Re-run it; if it keeps happening, lower workers or give the machine more memory.");
+        }
 
         // ── Cucumber: a Gherkin step with no glue, or glue still pending ──
         String undefinedStep = pick(msg, "^(?:UndefinedStepException: )?The step '(.+?)' is undefined");

@@ -91,6 +91,12 @@ class ErrorExplainerTest {
         assertEquals("#apply-coupon", e.get("locator"));
     }
 
+    @Test void browserCrashIsItsOwnCategory() {
+        assertEquals("crashed", x(new RuntimeException("Error {\n  message='Target crashed'\n  name='Error'\n}")).get("kind"));
+        assertEquals("Browser crashed", x(new org.openqa.selenium.WebDriverException("unknown error: session deleted because of page crash")).get("label"));
+        assertEquals("closed", x(new RuntimeException("Target page, context or browser has been closed")).get("kind"));
+    }
+
     @Test void displayMessage() {
         assertEquals("cart total expected [1] but found [2]", ErrorExplainer.displayMessage(new AssertionError("cart total expected [1] but found [2]")));
         assertEquals("NullPointerException", ErrorExplainer.displayMessage(new NullPointerException()));
