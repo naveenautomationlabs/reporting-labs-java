@@ -233,7 +233,40 @@ public final class RlInternal {
         TestSlot s = begin(title, file, line, projectName, path);
         s.testClass = cls;
         s.testMethod = method;
+        applyComments(s, cls);
         return s;
+    }
+
+    /** Meta from the Javadoc of the test's classes (outermost first) and of the method itself. Runs before the
+     *  framework applies @Owner / @Priority / @Meta, so annotations (and Rl.meta() later) win over the Javadoc. */
+    static void applyComments(TestSlot s, Class<?> cls) {
+        if (cls == null || !Config.commentMeta()) return;
+        try {
+            Set<String> keys = new HashSet<>(CommentMeta.KEYS);
+            for (String d : Config.dimensions()) keys.add(d.toLowerCase(Locale.ROOT));
+            for (String k : Config.links().keySet()) keys.add(k.toLowerCase(Locale.ROOT));
+            List<String> lines = SourceLocator.linesOf(cls);
+            if (lines.isEmpty()) return;
+            Deque<Class<?>> chain = new ArrayDeque<>();
+            for (Class<?> c = cls; c != null; c = c.getEnclosingClass()) chain.push(c);
+            List<String> texts = new ArrayList<>();
+            for (Class<?> c : chain) texts.add(CommentMeta.above(lines, CommentMeta.classLine(lines, c.getSimpleName())));
+            if (s.line > 0) texts.add(CommentMeta.above(lines, s.line));
+            for (String text : texts) {
+                CommentMeta.Result r = CommentMeta.parse(text);
+                for (Map.Entry<String, String> e : r.meta.entrySet())
+                    if (keys.contains(e.getKey())) s.meta.put(e.getKey(), MASKER.maskText(e.getValue()));
+                for (String t : r.tags) {
+                    if (keys.contains(t.toLowerCase(Locale.ROOT))) continue;   // `@priority` with no value is not a tag
+                    // like the Node.js and Python reporters: @P0 sets the priority, @critical the severity
+                    if (t.matches("(?i)P[0-4]") && !r.meta.containsKey("priority")) s.meta.put("priority", t.toUpperCase(Locale.ROOT));
+                    else if (t.matches("(?i)blocker|critical|major|minor|trivial") && !r.meta.containsKey("severity")) s.meta.put("severity", t.toLowerCase(Locale.ROOT));
+                    if (!s.tags.contains(t)) s.tags.add(t);
+                }
+            }
+        } catch (RuntimeException ignore) {
+            // comments are a convenience: never fail a test run over them
+        }
     }
 
     public static TestSlot begin(String title, String file, int line, String projectName, List<String> path) {

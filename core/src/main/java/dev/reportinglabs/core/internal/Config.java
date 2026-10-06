@@ -146,6 +146,8 @@ public final class Config {
     /** Also write a print-ready report.pdf next to the HTML, rendered by a headless Chrome / Chromium.
      *  Default true; set reporting-labs.pdf=false to skip. The report also has an "Export PDF" button. */
     public static boolean pdf()         { return getBool("pdf", true); }
+    /** Read meta from the Javadoc of a test method or class: {@code @owner naveen @priority P0}. Annotations win. */
+    public static boolean commentMeta() { return getBool("commentMeta", true); }
     public static String pdfFile()      { return get("pdfFile", "report.pdf"); }
     /** Explicit path to a Chrome / Chromium binary; otherwise the usual locations are searched. */
     public static String chromePath()   { String v = get("chromePath", ""); return v.isEmpty() ? null : v; }

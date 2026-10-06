@@ -72,6 +72,12 @@ public final class SourceLocator {
         return NONE;
     }
 
+    /** The source lines of the class's file (cached), or an empty list. */
+    public static List<String> linesOf(Class<?> cls) {
+        Path p = fileOf(cls);
+        return p == null ? Collections.emptyList() : lines(p);
+    }
+
     private static List<String> lines(Path p) {
         return LINES.computeIfAbsent(p.toString(), k -> {
             try { return Files.readAllLines(p, StandardCharsets.UTF_8); }

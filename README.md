@@ -205,6 +205,26 @@ Put on a test method or class; method-level wins. All under `dev.reportinglabs.c
 | `@Component` / `@Team` | | Free-form chips |
 | `@Meta` | `@Meta(key="region", value="apac")` | Any custom key; repeatable |
 
+### Or in the Javadoc (no annotations)
+
+The annotations and `Rl.meta()` stay the main way. If your team prefers not to add them, the same meta can sit in the
+Javadoc of the test method, or of the class for every test in it:
+
+```java
+/**
+ * Places an order with a saved card.
+ * @priority P0  @owner naveen  @feature checkout  @story SHOP-12
+ * @smoke
+ */
+@Test
+void placesAnOrder() { ... }
+```
+
+`@key value` pairs become meta (known keys, plus keys in `dimensions` or `links`); a line of bare `@words` becomes tags,
+`@P0` and `@critical` set priority and severity. Annotations and `Rl.meta()` win over the Javadoc. Javadoc's own tags
+(`@param`, `@throws`, `@see`, `@author`) and mentions in a sentence are ignored. Works with JUnit 5 (also `@Nested` and
+`@ParameterizedTest`) and TestNG. Turn it off with `reporting-labs.commentMeta=false`.
+
 ## Configuration
 
 Pass as system properties on the command line:
