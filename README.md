@@ -6,6 +6,8 @@
 
 Turn a Java test run into **one HTML file** you can share. No server, no login, no expiry. Open it in a browser, attach it to a Jira ticket, drop it in Slack — it just works.
 
+> ♥ **Free and open source, no paid tier.** If reportingLabs saves your team time, [support its development](https://reportinglabs.dev/support) (Razorpay for India, Stripe for everywhere else). A ⭐ on GitHub helps too.
+
 Seven Maven artifacts, all under the `dev.reportinglabs` groupId. Pick the one for your test framework, then add the one for your tool:
 
 | Artifact | What it is |
@@ -310,10 +312,6 @@ reportingLabs is a library that runs inside your own test run. There is no repor
 - **`reporting-labs-core` has no runtime dependencies;** the add-ons declare Selenium, Playwright, REST Assured and Cucumber as `provided`, so they use the versions already in your build. No install or post-install scripts. MIT licensed.
 
 Full details for security reviewers and client projects, including what is read, what is written and what to tell a client: [reportinglabs.dev/security-privacy](https://reportinglabs.dev/security-privacy). To report a vulnerability, open an issue saying you have a security report (no details) and a private channel will be arranged.
-
-## Support
-
-reportingLabs is free and MIT-licensed, with no paid tier. If it saves your team time, you can support its development at [reportinglabs.dev/support](https://reportinglabs.dev/support) (Razorpay for India, Stripe for everywhere else). A star on GitHub helps too.
 
 ## License
 
