@@ -2,6 +2,7 @@
 
 [![Maven Central](https://img.shields.io/maven-central/v/dev.reportinglabs/reporting-labs-core.svg?label=Maven%20Central)](https://central.sonatype.com/namespace/dev.reportinglabs)
 [![Docs](https://img.shields.io/badge/docs-reportinglabs.dev-1A56DB.svg)](https://reportinglabs.dev)
+[![Support reportingLabs](https://img.shields.io/badge/%E2%99%A5%20Support-reportingLabs-E5405E?style=flat)](https://reportinglabs.dev/support)
 
 Turn a Java test run into **one HTML file** you can share. No server, no login, no expiry. Open it in a browser, attach it to a Jira ticket, drop it in Slack — it just works.
 
