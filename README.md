@@ -201,8 +201,8 @@ Put on a test method or class; method-level wins. All under `dev.reportinglabs.c
 | `@Owner` | `@Owner("naveen")` | Owner rollup + Owner leaderboard chart |
 | `@Feature` | `@Feature("checkout")` | Feature rollup + Feature × project heatmap |
 | `@Story` | `@Story("SHOP-231")` | Linkable chip (via `reporting-labs.links.story`) |
-| `@Epic` / `@Issue` | | Linkable chips |
-| `@Component` / `@Team` | | Free-form chips |
+| `@Epic` / `@Issue` | `@Epic("EPIC-7")`, `@Issue("BUG-142")` | Linkable chips |
+| `@Component` / `@Team` | `@Component("payments")`, `@Team("web")` | Free-form chips |
 | `@Meta` | `@Meta(key="region", value="apac")` | Any custom key; repeatable |
 
 ### Or in the Javadoc (no annotations)
@@ -278,7 +278,57 @@ reporting-labs.bdd=true
 
 The plain `reporting-labs.screenshot` / `trace` / `video` keys are the defaults for a tool without its own setting and for `Rl.shouldCaptureScreenshot()` in your own base classes. Comments go on their own line; `java.util.Properties` has no inline comments. A label with a space needs `\ ` (`reporting-labs.env.App\ version=2.4.0`).
 
-Full reference at [reportinglabs.dev](https://reportinglabs.dev/reference/options).
+### All properties
+
+Every key starts with `reporting-labs.`, for example `reporting-labs.title`. Put it in `reporting-labs.properties` or pass it with `-D`.
+
+| Key | Default | What it does |
+|---|---|---|
+| `title` | `Test report` | Header title |
+| `outputFolder` | `target/reporting-labs` (Maven) / `build/reporting-labs` (Gradle) | Where the HTML lands |
+| `outputFile` | `index.html` | Report file name |
+| `open` | `never` | `never` \| `on-failure` \| `always` — open in browser; skipped in CI/headless |
+| `theme` | `auto` | `auto` \| `light` \| `dark` |
+| `palette` | `lab` | `lab` \| `ocean` \| `ember` \| `mono` |
+| `logo` | reportingLabs mark | Your logo in the header: a png/jpg/svg/gif/webp file (path or test-classpath resource, embedded), an `https://` URL, or a data URI |
+| `accent` | palette's | Brand accent hex |
+| `customCss` | – | Extra CSS appended to the report |
+| `embedFonts` | `true` | Inline IBM Plex woff2 (~140 KB) |
+| `editorLinks` | `false` | "Open in IDE" link per test |
+| `bdd` | `false` | Gherkin-style Given/When/Then |
+| `commentMeta` | `true` | Also read meta from the Javadoc of a test method or class (`@priority P0 @owner naveen`). Annotations and `Rl.meta()` win when both are there. `false` reads no Javadoc |
+| `pdf` | `true` | Also write a print-ready `report.pdf` next to the HTML. `false` turns it off |
+| `pdfFile` | `report.pdf` | File name of the PDF |
+| `chromePath` | – | The Chrome / Edge / Chromium that prints the PDF, when it is not found on its own (or set `CHROME_PATH`) |
+| `selenium.screenshot` | `on-failure` | Selenium add-on: screenshot at the end of each test. `never` / `on-failure` / `always` / `only-on-pass` |
+| `playwright.steps` | `true` | Playwright add-on: every action as a timed step, read from the trace at the end of the test |
+| `playwright.screenshot` | `on-failure` | Playwright add-on: full-page screenshot at the end of each test |
+| `playwright.trace` | `never` | Playwright add-on: trace zip. `on-failure` records every test with snapshots and screenshots, which costs about 70 ms per short test; the step list does not need it |
+| `playwright.video` | `never` | Playwright add-on: video, when the context was created with `RlPlaywright.contextOptions()` |
+| `screenshot`, `trace`, `video` | `on-failure`, `never`, `never` | Defaults for a tool without its own setting, and what `Rl.shouldCaptureScreenshot()` / `Trace()` / `Video()` read in your own base classes |
+| `captureStdout` | `true` | Copy `System.out` / `System.err` lines into each test's Console output |
+| `selenium.autoAttach` | `true` | Selenium add-on: discover the WebDriver on the test instance (fields, `ThreadLocal`, page objects) and record its actions |
+| `restassured.autoRecord` | `true` | REST Assured add-on: add the recording filter to `RestAssured.filters()` |
+| `playwright.autoAttach` | `true` | Playwright add-on: discover `Page`, `BrowserContext`, `Browser` and `APIRequestContext` on the test instance (fields, base classes, page objects, factories, `ThreadLocal`) and record them |
+| `project.*` | – | `name`, `version`, `team`, `url`, `description` |
+| `metadata.<key>` | – | Header chip; `build` labels the trend x-axis |
+| `links.<key>` | – | Turn a chip value into a link; `{id}` placeholder |
+| `env.<label>` | – | Extra row in the Environment card. A label with a space needs `\ ` in a properties file: `reporting-labs.env.App\ version=2.4.0`. Values that are URLs become links |
+| `history.enabled` | `true` | Read/write `reporting-labs.history.json` for the trend |
+| `history.file` | `reporting-labs.history.json` | Path, relative to CWD |
+| `history.keep` | `30` | Max runs kept |
+| `envVar` | – | Name of the variable holding the environment name, when it is not `ENV`, `TEST_ENV`, `APP_ENV` or anything ending in `_ENV` |
+| `maskKeys` | – | Extra sensitive-key substrings (comma-separated) |
+| `maskValues` | – | Literal values to blank wherever they appear, keyed or not (comma-separated) |
+| `maskFromEnv` | `true` | Learn the values of environment variables and `-D` properties whose names look sensitive (`PASSWORD`, `API_TOKEN`, `OAUTH_CLIENT_SECRET`) and blank them everywhere |
+| `dimensions` | `priority,severity,owner,feature` | Meta keys used in charts + filters |
+| `dimensionOrder.<key>` | – | Custom sort order for that dimension |
+| `widgets.<name>` | `true` | Turn a card off |
+| `sections.<name>.title` / `.html` | – | Custom HTML block below the summary |
+| `workers` | *auto* | Real thread count observed; set to force a number |
+| `projects` | `java` | Header + heatmap column |
+
+Full reference at [reportinglabs.dev](https://reportinglabs.dev/get-started/java/configuration).
 
 ## Works with what you already use
 
