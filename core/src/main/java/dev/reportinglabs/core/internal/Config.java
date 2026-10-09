@@ -223,6 +223,8 @@ public final class Config {
     public static String customCss()    { return get("customCss", ""); }
     public static boolean embedFonts()  { return getBool("embedFonts", true); }
     public static boolean editorLinks() { return getBool("editorLinks", false); }
+    /** Open the steps that lead to a failure when a failed test is opened. false: every step with sub-steps starts collapsed. */
+    public static boolean expandFailedSteps() { return getBool("expandFailedSteps", true); }
     public static boolean bdd()         { return getBool("bdd", false); }
 
     // ---------- header ----------

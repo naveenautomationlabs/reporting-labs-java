@@ -125,6 +125,7 @@ public final class ReportBuilder {
         options.put("customCss",      Config.customCss());
         options.put("embedFonts",     Config.embedFonts());
         options.put("editorLinks",    Config.editorLinks());
+        options.put("expandFailedSteps", Config.expandFailedSteps());
         options.put("widgets",        Config.widgets());
         options.put("dimensions",     Config.dimensions());
         options.put("dimensionOrder", Config.dimensionOrder());

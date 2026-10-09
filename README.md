@@ -32,7 +32,7 @@ Step by step, with screenshots, per tool: [Selenium](https://reportinglabs.dev/g
 <dependency>
   <groupId>dev.reportinglabs</groupId>
   <artifactId>reporting-labs-testng</artifactId>
-  <version>0.1.28</version>
+  <version>0.1.29</version>
   <scope>test</scope>
 </dependency>
 ```
@@ -45,7 +45,7 @@ Nothing to register: the listener is found through ServiceLoader. If you keep a 
 <dependency>
   <groupId>dev.reportinglabs</groupId>
   <artifactId>reporting-labs-junit5</artifactId>
-  <version>0.1.28</version>
+  <version>0.1.29</version>
   <scope>test</scope>
 </dependency>
 ```
@@ -319,6 +319,7 @@ Every key starts with `reporting-labs.`, for example `reporting-labs.title`. Put
 | `customCss` | – | Extra CSS appended to the report |
 | `embedFonts` | `true` | Inline IBM Plex woff2 (~140 KB) |
 | `editorLinks` | `false` | "Open in IDE" link per test |
+| `expandFailedSteps` | `true` | Open the steps that lead to a failure. `false`: every step with sub-steps starts collapsed (also on failures); **Expand all / Collapse all** above the steps either way |
 | `bdd` | `false` | Gherkin-style Given/When/Then |
 | `commentMeta` | `true` | Also read meta from the Javadoc of a test method or class (`@priority P0 @owner naveen`). Annotations and `Rl.meta()` win when both are there. `false` reads no Javadoc |
 | `pdf` | `true` | Also write a print-ready `report.pdf` next to the HTML. `false` turns it off |

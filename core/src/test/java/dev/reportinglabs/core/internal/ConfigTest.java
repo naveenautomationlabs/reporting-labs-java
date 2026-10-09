@@ -14,7 +14,7 @@ class ConfigTest {
 
     @AfterEach
     void clear() {
-        for (String k : new String[] { "screenshot", "trace", "theme", "open", "accent", "customCss", "links.story", "metadata.env" })
+        for (String k : new String[] { "screenshot", "trace", "theme", "open", "accent", "customCss", "links.story", "metadata.env", "expandFailedSteps" })
             System.clearProperty("reporting-labs." + k);
     }
 
@@ -29,6 +29,13 @@ class ConfigTest {
         assertEquals("dark", Config.theme());
         assertEquals("on-failure", Config.open());
         assertTrue(Config.shouldCapture(Config.screenshot(), false), "always must capture a pass");
+    }
+
+    @Test
+    void expand_failed_steps_defaults_to_true() {
+        assertTrue(Config.expandFailedSteps());
+        System.setProperty("reporting-labs.expandFailedSteps", "false   # every step starts collapsed");
+        assertFalse(Config.expandFailedSteps());
     }
 
     @Test

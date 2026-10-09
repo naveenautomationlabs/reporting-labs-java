@@ -7,7 +7,7 @@
   <parent>
     <groupId>dev.reportinglabs</groupId>
     <artifactId>reporting-labs-examples</artifactId>
-    <version>0.1.28</version>
+    <version>0.1.29</version>
   </parent>
 
   <artifactId>example-cucumber-testng</artifactId>
