@@ -73,7 +73,9 @@ public final class Masker {
      *  in log lines. Short values are skipped so a plain word is not blanked
      *  across the whole report. */
     private void learnFromEnvironment() {
-        try { for (Map.Entry<String, String> e : System.getenv().entrySet()) if (sensitive(e.getKey())) learn(e.getValue(), 6); } catch (Throwable ignore) {}
+        // PWD / OLDPWD are the shell's current folder ("pwd" is also a password key): learning them would blank
+        // the project path in every stack trace and editor link
+        try { for (Map.Entry<String, String> e : System.getenv().entrySet()) if (sensitive(e.getKey()) && !NOT_SECRET_ENV.contains(e.getKey().toUpperCase(Locale.ROOT))) learn(e.getValue(), 6); } catch (Throwable ignore) {}
         try { for (String k : System.getProperties().stringPropertyNames()) if (sensitive(k)) learn(System.getProperty(k), 6); } catch (Throwable ignore) {}
     }
 
@@ -137,6 +139,17 @@ public final class Masker {
             sum += d; dbl = !dbl;
         }
         return digits >= 13 && sum % 10 == 0;
+    }
+
+    /** In source code (error snippets, stack traces) a key is followed by code, not by its value:
+     *  {@code String token = await(login())}, {@code password = System.getenv("PASSWORD")}, {@code secret = null}.
+     *  Masking these would also teach the masker "null" and blank it across the report. Same rule as Node.js and Python. */
+    private static final Set<String> CODE_WORDS = new HashSet<>(Arrays.asList("await", "async", "new", "this", "self", "null", "undefined", "none", "nil", "true", "false", "function", "return", "typeof", "require", "import", "yield", "const", "let", "var"));
+    private static final Pattern CODE_REF = Pattern.compile("^`?\\$\\{|^`?(Bearer|Basic|Digest|Token)$|^(process\\.env|import\\.meta\\.env|os\\.environ|os\\.getenv|System\\.getenv|ENV)\\b", Pattern.CASE_INSENSITIVE);
+    private static final Set<String> NOT_SECRET_ENV = new HashSet<>(Arrays.asList("PWD", "OLDPWD"));
+
+    static boolean isCodeRef(String value) {
+        return value != null && (CODE_WORDS.contains(value.toLowerCase(Locale.ROOT)) || CODE_REF.matcher(value).find());
     }
 
     private static final Set<String> NOT_A_SECRET = new HashSet<>(Arrays.asList(
@@ -211,18 +224,18 @@ public final class Masker {
         s = replace(URL_USERINFO, s, m -> { learn(m.group(2)); return m.group(1) + "****" + m.group(3); });
         s = replace(CLI_USER, s, m -> { learn(m.group(2)); return m.group(1) + "****"; });
         s = replace(CREDS_PAIR, s, m -> { learn(m.group(3)); return m.group(1) + m.group(2) + "****"; });
-        s = replace(keyValue, s, m -> { learn(m.group(6)); return m.group(1) + m.group(2) + m.group(3) + m.group(4) + m.group(5) + "****"; });
+        s = replace(keyValue, s, m -> { if (isCodeRef(m.group(6))) return m.group(); learn(m.group(6)); return m.group(1) + m.group(2) + m.group(3) + m.group(4) + m.group(5) + "****"; });
         s = replace(quotedPair, s, m -> { learn(m.group(5)); return m.group().substring(0, m.group().length() - m.group(5).length() - 1) + "****" + m.group(4); });
         s = replace(spoken, s, m -> {
             String value = m.group(3), word = value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
-            if (NOT_A_SECRET.contains(word) || value.equals("****") || value.matches("[:=.,!?]+")) return m.group();
+            if (NOT_A_SECRET.contains(word) || value.equals("****") || value.matches("[:=.,!?]+") || isCodeRef(value)) return m.group();
             boolean explicit = m.group(2).matches("(?s).*\\b(is|was|of|as)\\b.*") || m.group(2).matches("(?s).*['\"]$") || m.group(2).matches("(?s).*[:=]\\s*$");
             if (explicit || looksSecret(value)) { learn(value); return m.group(1) + m.group(2) + "****"; }
             return m.group();
         });
         s = replace(VALUE_THEN_KEY, s, m -> {
             String value = m.group(1), word = value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
-            if (NOT_A_SECRET.contains(word) || value.contains("*") || !looksSecret(value)) return m.group();
+            if (NOT_A_SECRET.contains(word) || value.contains("*") || isCodeRef(value) || !looksSecret(value)) return m.group();
             learn(value); return "****" + m.group(2);
         });
         if (mentionsSecret.matcher(s).find()) {

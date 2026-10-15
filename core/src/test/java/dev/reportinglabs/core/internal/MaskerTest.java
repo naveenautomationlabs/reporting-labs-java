@@ -77,4 +77,16 @@ class MaskerTest {
         assertEquals("order 1234567890123 shipped", m.maskText("order 1234567890123 shipped"));   // fails Luhn: left alone
         assertEquals("pan=****", m.maskText("pan=5555555555554444"));
     }
+
+    @Test void codeIsNotASecret() {
+        // a key followed by code in a stack trace or snippet: nothing to mask, and "null" / "await" are never learned
+        Masker k = new Masker();
+        assertEquals("String password = System.getenv(\"PASSWORD\");", k.maskText("String password = System.getenv(\"PASSWORD\");"));
+        assertEquals("secret = null", k.maskText("secret = null"));
+        assertEquals("token = await login()", k.maskText("token = await login()"));
+        assertEquals("if (x == null) return null;", k.maskText("if (x == null) return null;"));
+        assertTrue(k.maskText("password=" + PW).endsWith("****"));
+        assertTrue(Masker.isCodeRef("${TOKEN}"));
+        assertFalse(Masker.isCodeRef(PW));
+    }
 }
