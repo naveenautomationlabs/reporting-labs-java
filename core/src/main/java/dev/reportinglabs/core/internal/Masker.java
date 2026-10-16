@@ -144,12 +144,15 @@ public final class Masker {
     /** In source code (error snippets, stack traces) a key is followed by code, not by its value:
      *  {@code String token = await(login())}, {@code password = System.getenv("PASSWORD")}, {@code secret = null}.
      *  Masking these would also teach the masker "null" and blank it across the report. Same rule as Node.js and Python. */
-    private static final Set<String> CODE_WORDS = new HashSet<>(Arrays.asList("await", "async", "new", "this", "self", "null", "undefined", "none", "nil", "true", "false", "function", "return", "typeof", "require", "import", "yield", "const", "let", "var"));
-    private static final Pattern CODE_REF = Pattern.compile("^`?\\$\\{|^`?(Bearer|Basic|Digest|Token)$|^(process\\.env|import\\.meta\\.env|os\\.environ|os\\.getenv|System\\.getenv|ENV)\\b", Pattern.CASE_INSENSITIVE);
+    private static final Set<String> CODE_WORDS = new HashSet<>(Arrays.asList("await", "async", "new", "this", "self", "null", "undefined", "none", "nil", "true", "false", "function", "return", "typeof", "require", "import", "yield", "const", "let", "var",
+        "string", "number", "boolean", "bigint", "any", "unknown", "object", "void", "never", "symbol", "str", "int", "float", "bool", "bytes", "dict", "list"));
+    private static final Pattern CODE_REF = Pattern.compile("^`?\\$\\{|^\\{\\w+\\}$|^`?(Bearer|Basic|Digest|Token)$|^(process\\.env|import\\.meta\\.env|os\\.environ|os\\.getenv|System\\.getenv|ENV)\\b", Pattern.CASE_INSENSITIVE);
     private static final Set<String> NOT_SECRET_ENV = new HashSet<>(Arrays.asList("PWD", "OLDPWD"));
 
     static boolean isCodeRef(String value) {
-        return value != null && (CODE_WORDS.contains(value.toLowerCase(Locale.ROOT)) || CODE_REF.matcher(value).find());
+        if (value == null) return false;
+        String v = value.replaceAll("[)\\]},;:.]+$", "");   // `password: string)` in a signature
+        return CODE_WORDS.contains(v.toLowerCase(Locale.ROOT)) || CODE_REF.matcher(v).find();
     }
 
     private static final Set<String> NOT_A_SECRET = new HashSet<>(Arrays.asList(

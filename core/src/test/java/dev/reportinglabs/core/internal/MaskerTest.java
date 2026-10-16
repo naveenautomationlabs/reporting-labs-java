@@ -89,4 +89,12 @@ class MaskerTest {
         assertTrue(Masker.isCodeRef("${TOKEN}"));
         assertFalse(Masker.isCodeRef(PW));
     }
+
+    @Test void typeNamesAreNotSecrets() {
+        // `password: string` in TypeScript, `password {string}` in a Cucumber step: types, not values
+        Masker k = new Masker();
+        assertEquals("async ({ page }, user: string, password: string) => {", k.maskText("async ({ page }, user: string, password: string) => {"));
+        assertEquals("@When(\"I sign in with password {string}\")", k.maskText("@When(\"I sign in with password {string}\")"));
+        assertEquals("text: string", k.maskText("text: string"));
+    }
 }
