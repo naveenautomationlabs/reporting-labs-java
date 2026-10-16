@@ -97,4 +97,13 @@ class MaskerTest {
         assertEquals("@When(\"I sign in with password {string}\")", k.maskText("@When(\"I sign in with password {string}\")"));
         assertEquals("text: string", k.maskText("text: string"));
     }
+
+    @Test void placeholdersAreNotSecrets() {
+        // SLF4J / format placeholders are code; a braced real value is still masked
+        Masker k = new Masker();
+        assertEquals("log.info(\"password={}\", pw);", k.maskText("log.info(\"password={}\", pw);"));
+        assertEquals("password={password}", k.maskText("password={password}"));
+        assertFalse(new Masker().maskText("password={S3cret}").contains("S3cret"));
+        assertFalse(new Masker().maskText("password={Secret}").contains("Secret"));
+    }
 }

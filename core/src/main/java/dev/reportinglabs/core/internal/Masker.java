@@ -146,7 +146,7 @@ public final class Masker {
      *  Masking these would also teach the masker "null" and blank it across the report. Same rule as Node.js and Python. */
     private static final Set<String> CODE_WORDS = new HashSet<>(Arrays.asList("await", "async", "new", "this", "self", "null", "undefined", "none", "nil", "true", "false", "function", "return", "typeof", "require", "import", "yield", "const", "let", "var",
         "string", "number", "boolean", "bigint", "any", "unknown", "object", "void", "never", "symbol", "str", "int", "float", "bool", "bytes", "dict", "list"));
-    private static final Pattern CODE_REF = Pattern.compile("^`?\\$\\{|^\\{\\w+\\}$|^`?(Bearer|Basic|Digest|Token)$|^(process\\.env|import\\.meta\\.env|os\\.environ|os\\.getenv|System\\.getenv|ENV)\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern CODE_REF = Pattern.compile("^`?\\$\\{|(?-i:^\\{(?:[a-z_][A-Za-z_]*)?\\}?$)|^`?(Bearer|Basic|Digest|Token)$|^(process\\.env|import\\.meta\\.env|os\\.environ|os\\.getenv|System\\.getenv|ENV)\\b", Pattern.CASE_INSENSITIVE);
     private static final Set<String> NOT_SECRET_ENV = new HashSet<>(Arrays.asList("PWD", "OLDPWD"));
 
     static boolean isCodeRef(String value) {
