@@ -67,6 +67,8 @@ Run `mvn test`. Open `target/reporting-labs/index.html` (Gradle: `build/reportin
 - API calls with headers, bodies and Copy as cURL. Screenshots, traces and videos per policy.
 - Secrets masked everywhere, before anything is written. See [Secrets are masked](#secrets-are-masked).
 - Trend, new vs known failures, flaky history and got-slower across runs, from `reporting-labs.history.json`.
+- A **Since last run** line under the tiles: new failures, fixed, still failing, got slower, new tests. Click a number to see those tests.
+- The command that runs a test again, with a Copy button on every test, and one for all failed tests: `mvn test -Dtest="com.shop.LoginTest#locksAccount"`, `./gradlew test --tests com.shop.LoginTest.locksAccount` under Gradle, `mvn test -Dcucumber.features="src/test/resources/features/login.feature:13"` for a Cucumber scenario. `./mvnw` or `./gradlew` when the project has one.
 - One lane per worker thread on the Timeline.
 
 ## Zero code: how the add-ons find your objects

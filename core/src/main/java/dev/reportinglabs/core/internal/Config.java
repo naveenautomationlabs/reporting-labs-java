@@ -449,7 +449,7 @@ public final class Config {
     public static Map<String, Object> widgets() {
         String[] known = {
             "runStrip","outcome","attention","dimensions","timeline","durations",
-            "tags","slowest","projects","flaky","environment","skipped",
+            "tags","slowest","projects","flaky","environment","skipped","changes",
             "overviewCards","breakdown","needsAttention","failureClusters","trend","env",
         };
         Map<String, Object> out = new LinkedHashMap<>();

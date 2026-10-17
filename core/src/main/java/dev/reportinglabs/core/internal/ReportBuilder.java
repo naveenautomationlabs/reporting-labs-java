@@ -63,12 +63,15 @@ public final class ReportBuilder {
         // attempt passed after a failure is flaky — same as the Node reporter.
         List<Map<String, Object>> testList = new ArrayList<>(ordered.size());
         Map<String, Map<String, Object>> openRetries = new HashMap<>();
+        Map<String, Object> rerun = Rerun.shape(ordered);
+        boolean scenarios = rerun != null && ordered.stream().anyMatch(Rerun::isScenario);
         int i = 0;
         for (RlInternal.TestSlot t : ordered) {
             Map<String, Object> result = toResult(t);
             Map<String, Object> test = openRetries.remove(t.key);
             if (test == null) {
                 test = toTestMap(t, i++, result);
+                if (rerun != null) { List<String> r = Rerun.target(t, scenarios); if (r != null) test.put("rerun", r); }
                 testList.add(test);
             } else {
                 @SuppressWarnings("unchecked")
@@ -115,6 +118,7 @@ public final class ReportBuilder {
         data.put("runStatus", failed > 0 || !RlInternal.globalErrors().isEmpty() ? "failed" : "passed");
         data.put("globalErrors", RlInternal.globalErrors());
         data.put("globalOutput", Collections.emptyList());
+        if (rerun != null) data.put("rerun", rerun);
 
         Map<String, Object> options = new LinkedHashMap<>();
         options.put("theme",          Config.theme());
