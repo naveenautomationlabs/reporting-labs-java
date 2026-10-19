@@ -46,6 +46,7 @@ public final class ReportingLabsPlugin implements ConcurrentEventListener {
         publisher.registerHandlerFor(TestCaseFinished.class, this::onCaseFinished);
         publisher.registerHandlerFor(EmbedEvent.class, this::onEmbed);
         publisher.registerHandlerFor(WriteEvent.class, this::onWrite);
+        publisher.registerHandlerFor(TestRunFinished.class, e -> ShutdownWriter.printStarLine());
     }
 
     private void onCaseStarted(TestCaseStarted e) {

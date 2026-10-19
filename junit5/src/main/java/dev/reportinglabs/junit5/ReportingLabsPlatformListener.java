@@ -1,6 +1,7 @@
 package dev.reportinglabs.junit5;
 
 import dev.reportinglabs.core.internal.RlInternal;
+import dev.reportinglabs.core.internal.ShutdownWriter;
 import org.junit.platform.engine.TestExecutionResult;
 import org.junit.platform.engine.UniqueId;
 import org.junit.platform.engine.reporting.ReportEntry;
@@ -41,6 +42,8 @@ public final class ReportingLabsPlatformListener implements TestExecutionListene
     static boolean hadDynamicChildren(String factoryUniqueId) { return FACTORIES_WITH_CHILDREN.remove(factoryUniqueId); }
 
     @Override public void testPlanExecutionStarted(TestPlan testPlan) { this.plan = testPlan; }
+
+    @Override public void testPlanExecutionFinished(TestPlan testPlan) { ShutdownWriter.printStarLine(); }
 
     @Override
     public void executionStarted(TestIdentifier id) {

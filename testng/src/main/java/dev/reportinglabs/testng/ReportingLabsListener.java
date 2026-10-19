@@ -225,4 +225,11 @@ public class ReportingLabsListener implements ITestListener, IConfigurationListe
         Meta[] metas = el.getAnnotationsByType(Meta.class);
         for (Meta mt : metas) RlInternal.meta(mt.key(), mt.value());
     }
+
+    /** End of a &lt;test&gt;: the star line (at most once a week, never in CI) while the build tool still shows output. */
+    @Override
+    public void onFinish(ITestContext context) {
+        ShutdownWriter.printStarLine();
+    }
 }
+

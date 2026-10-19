@@ -367,6 +367,8 @@ reportingLabs sits on the framework's `@Test` lifecycle — it does not care wha
 - Cucumber JVM (`reporting-labs-cucumber`), on the TestNG runner, the JUnit Platform engine or the JUnit 4 runner; Karate through its JUnit 5 runner (one row per scenario, nothing extra to add)
 - Plain code, HttpClient, JDBC: `Rl.api()` and `Rl.testData()` by hand
 
+On a developer's machine (never in CI) the run ends with one line asking for a GitHub star, at most once a week. `REPORTING_LABS_NO_STAR=1` turns it off.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |

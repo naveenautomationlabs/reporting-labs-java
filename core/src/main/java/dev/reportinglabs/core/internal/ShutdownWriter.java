@@ -77,6 +77,31 @@ public final class ShutdownWriter {
         } catch (Throwable ignore) { /* opening is best-effort */ }
     }
 
+    /** Prints the star line when the test run ends. Called by the JUnit 5, TestNG and Cucumber listeners: a build
+     *  tool shows what the test JVM prints while tests run, not what its shutdown hook prints. */
+    public static void printStarLine() {
+        String star = starLine();
+        if (star != null) System.out.println(star);
+    }
+
+    /** At most once a week, on a developer's machine (never in CI), one line asking for a GitHub star: most people
+     *  who use the reporter never see the repository. Off with REPORTING_LABS_NO_STAR=1. */
+    static String starLine() {
+        String off = System.getenv("REPORTING_LABS_NO_STAR");
+        if ((off != null && !off.isEmpty()) || isCi()) return null;
+        try {
+            java.nio.file.Path mark = java.nio.file.Paths.get(System.getProperty("java.io.tmpdir"), "reporting-labs-star");
+            if (java.nio.file.Files.exists(mark)
+                    && System.currentTimeMillis() - java.nio.file.Files.getLastModifiedTime(mark).toMillis() < 7L * 24 * 3600 * 1000) return null;
+            // the time it was shown keeps it to once a week: if it cannot be kept, stay quiet
+            java.nio.file.Files.write(mark, new byte[0]);
+            java.nio.file.Files.setLastModifiedTime(mark, java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis()));
+        } catch (Exception e) {
+            return null;
+        }
+        return "[reporting-labs] If reportingLabs helps you, a GitHub star helps other testers find it: https://github.com/naveenautomationlabs/reporting-labs";
+    }
+
     private static boolean isCi() {
         for (String k : new String[]{
             "CI", "GITHUB_ACTIONS", "JENKINS_URL", "GITLAB_CI",
