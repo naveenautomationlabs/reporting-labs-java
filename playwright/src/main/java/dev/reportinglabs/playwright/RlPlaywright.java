@@ -49,6 +49,8 @@ public final class RlPlaywright {
     private static volatile boolean shutdownHooked = false;
     /** Videos to attach once their contexts are closed and the report is written. */
     private static final List<Object[]> PENDING_VIDEOS = Collections.synchronizedList(new ArrayList<>());
+    /** When each page closed: its video ends then, so close time minus the video's length is its first frame. */
+    private static final Map<Page, Long> CLOSED_AT = Collections.synchronizedMap(new WeakHashMap<>());
     private static volatile boolean videoHooked = false;
 
     /**
@@ -83,7 +85,7 @@ public final class RlPlaywright {
         Video v;
         try { v = page.video(); } catch (Throwable t) { return; }
         if (v == null) return;
-        PENDING_VIDEOS.add(new Object[] { slot, v });
+        PENDING_VIDEOS.add(new Object[] { slot, v, page });
         if (!videoHooked) {
             synchronized (RlPlaywright.class) {
                 if (!videoHooked) { videoHooked = true; RlInternal.beforeWrite(RlPlaywright::attachVideos); }
@@ -114,7 +116,10 @@ public final class RlPlaywright {
                     String name = "video-" + (++n) + ".webm";
                     Path dst = assets.resolve(name);
                     Files.copy(src, dst, StandardCopyOption.REPLACE_EXISTING);
-                    RlInternal.attachFile(slot, "video.webm", "video/webm", "assets/" + name, Files.size(dst));
+                    Long closed = CLOSED_AT.get((Page) pv[2]);
+                    long length = webmDurationMs(dst);
+                    long first = closed != null && length > 0 ? closed - length : 0L;
+                    RlInternal.attachFile(slot, "video.webm", "video/webm", "assets/" + name, Files.size(dst), first);
                 }
                 Files.deleteIfExists(src);   // the report has its copy; the policy did not want the rest
             } catch (Throwable ignore) { /* a missing video never breaks the report */ }
@@ -125,6 +130,71 @@ public final class RlPlaywright {
     }
 
     private RlPlaywright() {}
+
+    /** Pages whose browser listeners are installed (a page shared by several tests gets them once). */
+    private static final Set<Page> WATCHED = Collections.newSetFromMap(Collections.synchronizedMap(new WeakHashMap<>()));
+
+    /**
+     * What the browser reports while a test runs, for the report's "What the browser saw": uncaught JavaScript
+     * errors, console.error messages, and requests that got no response or a 4xx/5xx. Playwright delivers page
+     * events on the thread that drives the page, so each lands on the test that was running.
+     */
+    private static void watchBrowser(Page page) {
+        if (!WATCHED.add(page)) return;
+        try {
+            page.onPageError(err -> {
+                String e = err == null ? "" : err;
+                int nl = e.indexOf('\n');
+                RlInternal.browserEvent("error", nl > 0 ? e.substring(0, nl) : e, safeUrl(page), null, 0, nl > 0 ? e : null);
+            });
+            page.onConsoleMessage(m -> {
+                if (!"error".equals(m.type())) return;
+                String text = m.text();
+                // the browser's own note for a request that got 4xx/5xx: the request is already listed
+                if (text != null && text.startsWith("Failed to load resource")) return;
+                RlInternal.browserEvent("console", text, m.location(), null, 0, null);
+            });
+            page.onResponse(r -> {
+                int status = r.status();
+                if (status < 400 || r.url().matches(".*/favicon\\.ico(\\?.*)?$")) return;
+                RlInternal.browserEvent("request", r.statusText(), r.url(), r.request().method(), status, null);
+            });
+            page.onRequestFailed(r -> {
+                String why = r.failure();
+                if (why != null && why.matches("(?i).*(ERR_ABORTED|NS_BINDING_ABORTED|cancelled).*")) return;   // navigating away
+                RlInternal.browserEvent("request", why == null ? "Request failed" : why, r.url(), r.method(), 0, null);
+            });
+            page.onClose(p -> CLOSED_AT.put(p, System.currentTimeMillis()));
+        } catch (Throwable ignore) { /* an older Playwright without one of the events: the rest still works */ }
+    }
+
+    private static String safeUrl(Page page) { try { return page.url(); } catch (Throwable t) { return null; } }
+
+    /** The length of a .webm recording in ms, from its header (Segment Info: TimecodeScale and Duration). 0 when unknown. */
+    static long webmDurationMs(Path file) {
+        byte[] b = new byte[4096];
+        int n;
+        try (java.io.InputStream in = Files.newInputStream(file)) { n = in.read(b); } catch (IOException e) { return 0L; }
+        if (n <= 0) return 0L;
+        double scaleNs = 1_000_000;   // TimecodeScale, default 1 ms
+        for (int i = 0; i + 4 < n; i++) {
+            if ((b[i] & 0xff) == 0x2A && (b[i + 1] & 0xff) == 0xD7 && (b[i + 2] & 0xff) == 0xB1) {
+                int len = (b[i + 3] & 0xff) & 0x7f;   // a one-byte size: 0x8N
+                if (len > 0 && len <= 8 && i + 4 + len <= n) { long v = 0; for (int k = 0; k < len; k++) v = (v << 8) | (b[i + 4 + k] & 0xff); scaleNs = v; }
+                break;
+            }
+        }
+        for (int i = 0; i + 3 < n; i++) {
+            if ((b[i] & 0xff) == 0x44 && (b[i + 1] & 0xff) == 0x89) {
+                int len = (b[i + 2] & 0xff) & 0x7f;
+                if (i + 3 + len > n) break;
+                java.nio.ByteBuffer buf = java.nio.ByteBuffer.wrap(b, i + 3, len);
+                double ticks = len == 4 ? buf.getFloat() : len == 8 ? buf.getDouble() : 0;
+                return Math.round(ticks * scaleNs / 1_000_000);
+            }
+        }
+        return 0L;
+    }
 
     /** The most recently attached page of the current test, or null. */
     public static Page currentPage() {
@@ -160,6 +230,7 @@ public final class RlPlaywright {
 
         PageState st = new PageState(page);
         STATES.put(page, st);
+        watchBrowser(page);
         // Closed inside the test body (a try-with-resources around the
         // browser): stop the trace now, while the context still exists, so
         // the steps are not lost. finish() then finds nothing left to stop.

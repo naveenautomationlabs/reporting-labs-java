@@ -174,6 +174,7 @@ public final class ReportBuilder {
         result.put("logs", t.logs);
         result.put("data", t.dataBlocks);
         result.put("api", t.apiCalls);
+        if (!t.browser.isEmpty()) result.put("browser", t.browser);
         result.put("retry", 0);
         result.put("status", t.outcome);
         result.put("duration", t.duration);

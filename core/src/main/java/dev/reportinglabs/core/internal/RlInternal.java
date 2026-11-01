@@ -36,6 +36,8 @@ public final class RlInternal {
         final List<Map<String, Object>> logs = new ArrayList<>();
         final List<Map<String, Object>> dataBlocks = new ArrayList<>();
         final List<Map<String, Object>> apiCalls = new ArrayList<>();
+        /** What the browser reported while the test ran: uncaught JS errors, console.error, failed requests. */
+        final List<Map<String, Object>> browser = new ArrayList<>();
         final List<Map<String, Object>> attachments = new ArrayList<>();
         /** Attachments an integration added on its own (auto screenshot). A
          *  later user attachment with the same name replaces it instead of
@@ -435,7 +437,9 @@ public final class RlInternal {
             // they ride along with the pending hook into the first test.
             children(hook).add(m);
         }
-        return new Step(m);
+        Step step = new Step(m);
+        m.put("start", step.start);   // lines the step up with the video
+        return step;
     }
 
     /** The framework hook running on this thread, if any. */
@@ -469,6 +473,7 @@ public final class RlInternal {
         if (s == null) return;
         Map<String, Object> m = newStep(title, category);
         m.put("duration", Math.max(0, durationMs));
+        if (startWall > 0) m.put("start", startWall);
         if (error != null && !error.isEmpty()) m.put("error", MASKER.maskText(error));
         Map<String, Object> parent = startWall > 0 ? containerAt(s, s.steps, startWall) : null;
         if (parent == null) parent = s.openSteps.peek();
@@ -504,7 +509,9 @@ public final class RlInternal {
         }
         OPEN_HOOK.set(m);
         OPEN_HOOK_BEFORE.set(before);
-        return new Step(m);
+        Step step = new Step(m);
+        m.put("start", step.start);
+        return step;
     }
 
     public static void hookEnd(Step step, Throwable error) {
@@ -532,6 +539,7 @@ public final class RlInternal {
     }
 
     private static void bumpGroup(Map<String, Object> group, Map<String, Object> child) {
+        if (group.get("start") == null && child.get("start") != null) group.put("start", child.get("start"));
         long g = ((Number) group.get("duration")).longValue();
         group.put("duration", g + ((Number) child.get("duration")).longValue());
         if (child.get("error") != null && group.get("error") == null) group.put("error", child.get("error"));
@@ -795,6 +803,26 @@ public final class RlInternal {
         s.apiCalls.add(row);
     }
 
+    /** What the browser reported on the running test (an integration's page listeners): kind is error, console
+     *  or request; status is the HTTP status of a request that got a 4xx/5xx, 0 when it got no response. Text
+     *  and URLs are masked. At most 50 per test, so a page that logs every frame stays readable. */
+    public static void browserEvent(String kind, String text, String url, String method, int status, String stack) {
+        TestSlot s = currentOrLast();
+        if (s == null) return;
+        synchronized (s.browser) {
+            if (s.browser.size() >= 50) return;
+            Map<String, Object> e = new LinkedHashMap<>();
+            e.put("t", System.currentTimeMillis());
+            e.put("kind", kind);
+            e.put("text", text == null ? "" : MASKER.maskText(text));
+            if (url != null && !url.isEmpty()) e.put("url", MASKER.maskText(url));
+            if (method != null && !method.isEmpty()) e.put("method", method);
+            if (status > 0) e.put("status", status);
+            if (stack != null && !stack.isEmpty()) e.put("stack", MASKER.maskText(stack));
+            s.browser.add(e);
+        }
+    }
+
     /** Attaches a binary blob (screenshot, trace, video, whatever). Small
      *  attachments are inlined as data URIs at write time; larger ones can
      *  be written as sibling files in a future revision. */
@@ -870,12 +898,18 @@ public final class RlInternal {
     /** Attach a file that lives next to the report (assets/…): the report
      *  links to it instead of inlining it. */
     public static void attachFile(TestSlot slot, String name, String contentType, String relativeSrc, long size) {
+        attachFile(slot, name, contentType, relativeSrc, size, 0L);
+    }
+
+    /** Same, for a video whose first frame's wall-clock time is known: the report lines it up with the steps. */
+    public static void attachFile(TestSlot slot, String name, String contentType, String relativeSrc, long size, long videoStart) {
         if (slot == null) return;
         Map<String, Object> a = new LinkedHashMap<>();
         a.put("name", name);
         a.put("contentType", contentType);
         a.put("size", size);
         a.put("src", relativeSrc);
+        if (videoStart > 0) a.put("videoStart", videoStart);
         slot.attachments.add(a);
     }
 

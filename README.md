@@ -65,6 +65,7 @@ Run `mvn test`. Open `target/reporting-labs/index.html` (Gradle: `build/reportin
 - Every test with its real source line (`OrdersApiTest.java:42`); on failure the failing line, a code snippet and a plain-language reading of the error (element not found, assertion with expected/actual, site unreachable, test timed out, hook failed), for Playwright, Selenium, TestNG, JUnit and AssertJ errors.
 - Before/After hooks with timings, `Rl.step()` groups, Selenium and Playwright actions, `System.out` / `System.err` lines, retries grouped as attempts and marked flaky, DataProvider rows as Parameters.
 - API calls with headers, bodies and Copy as cURL. Screenshots, traces and videos per policy.
+- Playwright: **What the browser saw** on a failed test (uncaught JavaScript errors, `console.error`, requests that failed or got a 4xx/5xx, timed against the failure), and the video in step with the steps: ▶ on a step plays that moment, **Watch the failure** the 5 seconds before it.
 - Secrets masked everywhere, before anything is written. See [Secrets are masked](#secrets-are-masked).
 - Trend, new vs known failures, flaky history and got-slower across runs, from `reporting-labs.history.json`.
 - A **Since last run** line under the tiles: new failures, fixed, still failing, got slower, new tests. Click a number to see those tests.
