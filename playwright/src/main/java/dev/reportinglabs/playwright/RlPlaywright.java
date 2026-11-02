@@ -231,6 +231,9 @@ public final class RlPlaywright {
         PageState st = new PageState(page);
         STATES.put(page, st);
         watchBrowser(page);
+        // Pages this one opens (a popup, window.open, a new tab) belong to the same test: attach them as they open,
+        // so each gets its own video, screenshot and browser events.
+        try { BrowserContext c = page.context(); if (c != null && HOOKED_CONTEXTS.add(c)) c.onPage(RlPlaywright::attach); } catch (Throwable ignore) { }
         // Closed inside the test body (a try-with-resources around the
         // browser): stop the trace now, while the context still exists, so
         // the steps are not lost. finish() then finds nothing left to stop.
